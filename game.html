@@ -2,32 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Mini Jump King</title>
   <style>
-    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
-    
-    /* Responsive layout containers */
-    .game-container { 
-      position: relative;
-      width: 100%;
-      max-width: 500px;
-      margin: 0 auto;
-    }
-    
-    canvas { 
-      display: block; 
-      background: #87ceeb; 
-      width: 100%;
-      max-width: 500px;
-      height: auto;
-    }
-    
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; background: #87ceeb; float: left; }
     #info {
       position: absolute;
-      left: 105%;
+      left: 520px;
       top: 70px;
       width: 320px;
+      font-family: Arial, sans-serif;
       background: rgba(255,255,255,0.95);
       border-radius: 10px;
       padding: 18px 20px 18px 20px;
@@ -36,28 +21,6 @@
       color: #222;
       z-index: 10;
     }
-    
-    /* Mobile layout - info panel below the canvas */
-    @media (max-width: 900px) {
-      .game-container {
-        display: flex;
-        flex-direction: column;
-      }
-      
-      #info {
-        position: relative;
-        left: 0;
-        top: 0;
-        width: calc(100% - 40px);
-        margin: 10px auto;
-        max-width: 500px;
-      }
-      
-      canvas {
-        margin: 0 auto;
-      }
-    }
-    
     .color-box {
       display: inline-block;
       width: 18px;
@@ -66,90 +29,119 @@
       vertical-align: middle;
       border: 1px solid #888;
     }
-    
     .desc-row { margin-bottom: 8px; }
     
     /* Mobile controls */
-    .mobile-controls {
-      display: none; /* Hidden by default, shown on mobile */
-      position: absolute;
-      bottom: 30px;
+    #mobile-controls {
+      position: fixed;
+      bottom: 20px;
       left: 0;
       width: 100%;
-      text-align: center;
-      z-index: 30;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+      box-sizing: border-box;
+      z-index: 20;
+      display: none; /* Hidden by default, shown on mobile */
     }
     
-    .mobile-controls button {
-      width: 80px;
-      height: 80px;
-      margin: 0 20px;
+    .control-btn {
+      background: rgba(255, 255, 255, 0.7);
+      border: 2px solid #444;
       border-radius: 50%;
-      background: rgba(255,255,255,0.7);
-      border: 3px solid #444;
+      width: 70px;
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-size: 24px;
-      font-weight: bold;
-      color: #333;
-      touch-action: manipulation;
+      -webkit-touch-callout: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
     
-    @media (max-width: 768px) {
-      .mobile-controls {
-        display: flex;
-        justify-content: space-around;
+    #jump-btn {
+      font-size: 30px;
+    }
+    
+    /* Info toggle button */
+    #info-toggle {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 2px solid #444;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 16px;
+      z-index: 30;
+      display: none; /* Hidden by default, shown on mobile */
+    }
+    
+    /* Responsive layout */
+    @media (max-width: 920px) {
+      #info {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        overflow-y: auto;
+        padding-bottom: 100px; /* Extra padding to ensure scrolling works well */
+        display: none; /* Hidden by default on mobile */
+      }
+      
+      #info.visible {
+        display: block; /* Show only when toggled */
+      }
+      
+      #info-toggle {
+        display: block; /* Show toggle on mobile */
       }
       
       #skipStageBtn {
         position: relative;
         left: auto;
         top: auto;
+        width: calc(100% - 40px);
         margin: 10px auto;
-        width: 80%;
-        max-width: 300px;
+        display: block;
+      }
+      
+      canvas {
+        width: 100%;
+        height: auto;
+        max-height: 80vh;
+      }
+      
+      #mobile-controls {
+        display: flex;
       }
     }
   </style>
 </head>
 <body>
-<div class="game-container">
-  <canvas id="game"></canvas>
-  
-  <!-- Mobile controls -->
-  <div class="mobile-controls">
-    <button id="leftBtn">←</button>
-    <button id="jumpBtn">↑</button>
-    <button id="rightBtn">→</button>
-  </div>
-  
-  <div id="info">
-    <!-- 설명 내용은 drawInfo()에서 동적으로 채움 -->
-  </div>
+<canvas id="game"></canvas>
+<div id="info">
+  <!-- 설명 내용은 drawInfo()에서 동적으로 채움 -->
 </div>
-
-<button id="skipStageBtn" style="position:absolute; right:20px; top:30px; width:260px; height:40px; font-size:18px; border-radius:8px; border:1px solid #888; background:#f5f5f5; cursor:pointer; z-index:20;">
+<button id="info-toggle">게임 설명 보기</button>
+<button id="skipStageBtn" style="position:absolute; left:840px; top:30px; width:260px; height:40px; font-size:18px; border-radius:8px; border:1px solid #888; background:#f5f5f5; cursor:pointer; z-index:20;">
   다음 스테이지로 스킵
 </button>
-
+<!-- 모바일 컨트롤 추가 -->
+<div id="mobile-controls">
+  <div id="left-btn" class="control-btn">←</div>
+  <div id="jump-btn" class="control-btn">↑</div>
+  <div id="right-btn" class="control-btn">→</div>
+</div>
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const CANVAS_WIDTH = 500;
-const CANVAS_HEIGHT = 800;
-canvas.width = CANVAS_WIDTH;
-canvas.height = CANVAS_HEIGHT;
-
-// Handle canvas resizing for responsive layout
-function resizeCanvas() {
-  const containerWidth = canvas.parentElement.clientWidth;
-  const scale = containerWidth / CANVAS_WIDTH;
-  
-  // Scale canvas using CSS, maintain aspect ratio
-  canvas.style.height = (CANVAS_HEIGHT * scale) + 'px';
-}
-
-// Initial resize and add listener
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
+canvas.width = 500;
+canvas.height = 800;
 
 const player = {
   x: 180,
@@ -173,75 +165,6 @@ let currentStage = 0;
 
 // 죽은 횟수 변수
 let deathCount = 0;
-
-// Mobile touch controls
-const leftBtn = document.getElementById('leftBtn');
-const jumpBtn = document.getElementById('jumpBtn');
-const rightBtn = document.getElementById('rightBtn');
-
-// Mobile control event listeners
-leftBtn.addEventListener('touchstart', function(e) {
-  e.preventDefault();
-  keys['ArrowLeft'] = true;
-});
-
-leftBtn.addEventListener('touchend', function(e) {
-  e.preventDefault();
-  keys['ArrowLeft'] = false;
-});
-
-rightBtn.addEventListener('touchstart', function(e) {
-  e.preventDefault();
-  keys['ArrowRight'] = true;
-});
-
-rightBtn.addEventListener('touchend', function(e) {
-  e.preventDefault();
-  keys['ArrowRight'] = false;
-});
-
-jumpBtn.addEventListener('touchstart', function(e) {
-  e.preventDefault();
-  // Simulate space bar press for jumping
-  if (gameClear) {
-    currentStage = 0;
-    gameClear = false;
-    restart();
-    return;
-  }
-  
-  if (gameOver) {
-    restart();
-    return;
-  }
-  
-  if (player.grounded) {
-    player.vy = player.jumpPower;
-    player.grounded = false;
-    player.canDoubleJump = true;
-  } else if (player.canDoubleJump) {
-    player.vy = player.jumpPower;
-    player.canDoubleJump = false;
-  }
-});
-
-// Double tap to restart when game over (mobile)
-let lastTap = 0;
-canvas.addEventListener('touchend', function(e) {
-  const currentTime = new Date().getTime();
-  const tapLength = currentTime - lastTap;
-  
-  if (tapLength < 300 && tapLength > 0) {
-    if (gameOver) restart();
-    if (gameClear) {
-      currentStage = 0;
-      gameClear = false;
-      restart();
-    }
-  }
-  
-  lastTap = currentTime;
-});
 
 // 레이저 함정 정의
 function createLaser(x, y, direction, interval, duration, length) {
@@ -672,6 +595,289 @@ window.addEventListener('keydown', e => {
         player.vy = player.jumpPower;
         player.grounded = false;
         player.canDoubleJump = true;
+      } else if (player.canDoubleJump) {
+        player.vy = player.jumpPower;
+        player.canDoubleJump = false;
+      }
+    }
+  }
+  keys[e.code] = true;
+  if (gameOver && e.code === 'Space') restart();
+});
+
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// 모바일 컨트롤 이벤트 리스너 추가
+const leftBtn = document.getElementById('left-btn');
+const rightBtn = document.getElementById('right-btn');
+const jumpBtn = document.getElementById('jump-btn');
+
+// 터치 이벤트 처리
+let touchControls = {
+  left: false,
+  right: false
+};
+
+// 모바일 디바이스 감지
+function isMobileDevice() {
+  return (window.innerWidth <= 920) || 
+         ('ontouchstart' in window) || 
+         (navigator.maxTouchPoints > 0) ||
+         (navigator.msMaxTouchPoints > 0);
+}
+
+// 모바일 컨트롤 초기화
+function initMobileControls() {
+  if (isMobileDevice()) {
+    document.getElementById('mobile-controls').style.display = 'flex';
+  }
+  
+  // 왼쪽 버튼
+  leftBtn.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    touchControls.left = true;
+    keys['ArrowLeft'] = true;
+  });
+  
+  leftBtn.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    touchControls.left = false;
+    keys['ArrowLeft'] = false;
+  });
+  
+  // 오른쪽 버튼
+  rightBtn.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    touchControls.right = true;
+    keys['ArrowRight'] = true;
+  });
+  
+  rightBtn.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    touchControls.right = false;
+    keys['ArrowRight'] = false;
+  });
+  
+  // 점프 버튼
+  jumpBtn.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (gameClear) {
+      currentStage = 0;
+      gameClear = false;
+      restart();
+      return;
+    }
+    
+    if (gameOver) {
+      restart();
+      return;
+    }
+    
+    if (player.grounded) {
+      player.vy = player.jumpPower;
+      player.grounded = false;
+      player.canDoubleJump = true;
+    } else if (player.canDoubleJump) {
+      player.vy = player.jumpPower;
+      player.canDoubleJump = false;
+    }
+  });
+}
+
+// 화면 크기에 따라 캔버스 크기 조정
+function resizeCanvas() {
+  if (isMobileDevice()) {
+    const container = document.body;
+    const containerWidth = container.clientWidth;
+    const containerHeight = window.innerHeight;
+    
+    // 캔버스 고정 비율 유지 (500x800)
+    let canvasWidth = Math.min(containerWidth, containerWidth * 0.9);
+    let canvasHeight = canvasWidth * (800/500);
+    
+    if (canvasHeight > containerHeight * 0.8) {
+      canvasHeight = containerHeight * 0.8;
+      canvasWidth = canvasHeight * (500/800);
+    }
+    
+    // CSS 설정 (실제 게임 로직의 캔버스 크기는 그대로 유지)
+    canvas.style.width = canvasWidth + 'px';
+    canvas.style.height = canvasHeight + 'px';
+  } else {
+    canvas.style.width = '';
+    canvas.style.height = '';
+  }
+}
+
+// 화면 회전/크기 조정 시 캔버스 크기 재조정
+window.addEventListener('resize', resizeCanvas);
+
+// 초기화
+initMobileControls();
+resizeCanvas();
+
+function restart() {
+  // 모든 스테이지에서 시작 발판 위에 플레이어 위치 (함정과 겹치지 않는 안전한 곳)
+  platforms = stages[currentStage];
+  traps = getTrapsForStage(currentStage);
+  lasers = getLasersForStage(currentStage);
+  balls = getBallsForStage(currentStage);
+  missiles = getMissilesForStage(currentStage);
+  resetVanishStates();
+  hasKey = false;
+
+  // 시작 발판(첫 번째 발판) 위에서, 해당 발판과 겹치는 함정이 없는 위치를 찾음
+  const plat = platforms[0];
+  let safeX = plat.x + plat.width / 2 - player.width / 2;
+  let safeY = plat.y - player.height;
+
+  // 함정과 겹치지 않는 안전한 x좌표 찾기 (좌우로 1픽셀씩 이동하며 검사)
+  let foundSafe = false;
+  for (let dx = 0; dx <= plat.width - player.width; dx++) {
+    let testX = plat.x + dx;
+    let overlap = traps.some(t =>
+      testX < t.x + t.width &&
+      testX + player.width > t.x &&
+      safeY < t.y + t.height &&
+      safeY + player.height > t.y
+    );
+    if (!overlap) {
+      safeX = testX;
+      foundSafe = true;
+      break;
+    }
+  }
+  // 혹시 못 찾으면 중앙에 둠
+  player.x = safeX;
+  player.y = safeY;
+  player.vx = 0;
+  player.vy = 0;
+  player.canDoubleJump = false;
+  player.hasJumped = false;
+  gameOver = false;
+  gameClear = false;
+  drawInfo();
+}
+
+function nextStage() {
+  currentStage++;
+  if (currentStage >= stages.length) {
+    gameClear = true;
+    drawInfo();
+    return;
+  }
+  platforms = stages[currentStage];
+  traps = getTrapsForStage(currentStage);
+  lasers = getLasersForStage(currentStage);
+  balls = getBallsForStage(currentStage);
+  missiles = getMissilesForStage(currentStage);
+  resetVanishStates();
+  hasKey = false;
+  restart();
+}
+
+// 레이저 업데이트 및 충돌 체크
+function updateLasers() {
+  for (let laser of lasers) {
+    laser.timer = (laser.timer + 1) % laser.interval;
+    laser.active = laser.timer < laser.duration;
+    if (laser.active) {
+      // 충돌 체크
+      if (laser.direction === 'horizontal') {
+        if (
+          player.y + player.height > laser.y - 3 &&
+          player.y < laser.y + 3 &&
+          player.x + player.width > laser.x &&
+          player.x < laser.x + laser.length
+        ) {
+          gameOver = true;
+          deathCount++;
+          drawInfo();
+        }
+      } else if (laser.direction === 'vertical') {
+        if (
+          player.x + player.width > laser.x - 3 &&
+          player.x < laser.x + 3 &&
+          player.y + player.height > laser.y &&
+          player.y < laser.y + laser.length
+        ) {
+          gameOver = true;
+          deathCount++;
+          drawInfo();
+        }
+      }
+    }
+  }
+}
+
+// 구르는 공 업데이트 및 충돌 체크
+function updateBalls() {
+  for (let ball of balls) {
+    ball.timer++;
+    // interval마다 delay 후에 공이 다시 시작점에서 출발
+    if (ball.timer >= (ball.interval + (ball.delay || 0))) {
+      ball.cx = ball.x;
+      ball.cy = ball.y;
+      ball.cvx = ball.vx;
+      ball.cvy = ball.vy;
+      ball.timer = 0;
+      ball.active = true;
+    }
+    // delay 동안은 비활성
+    if (ball.timer < (ball.delay || 0)) {
+      ball.active = false;
+      continue;
+    }
+    ball.active = true;
+    // 중력 적용
+    if (ball.bouncy) {
+      ball.cvy += 0.45;
+    } else {
+      ball.cvy += 0.5;
+    }
+    ball.cx += ball.cvx;
+    ball.cy += ball.cvy;
+    // 바닥/발판 충돌
+    let onPlatform = false;
+    for (let i = 0; i < platforms.length; i++) {
+      const p = platforms[i];
+      if (p.vanish && vanishStates[i] && vanishStates[i].vanished) continue;
+      if (
+        ball.cx + ball.radius > p.x &&
+        ball.cx - ball.radius < p.x + p.width &&
+        ball.cy + ball.radius > p.y &&
+        ball.cy + ball.radius < p.y + p.height + 6 &&
+        ball.cvy >= 0
+      ) {
+        ball.cy = p.y - ball.radius;
+        if (ball.bouncy) {
+          ball.cvy = -Math.abs(ball.cvy) * 0.85 - 6.5; // 튀는 효과
+        } else {
+          ball.cvy = 0;
+        }
+        onPlatform = true;
+      }
+    }
+    // 바닥에 닿으면
+    if (ball.cy + ball.radius > canvas.height) {
+      ball.cy = canvas.height - ball.radius;
+      if (ball.bouncy) {
+        ball.cvy = -Math.abs(ball.cvy) * 0.85 - 6.5;
+      } else {
+        ball.cvy = 0;
+        ball.cvx = 0;
+        ball.active = false;
+      }
+    }
+    // 벽 반사
+    if (ball.cx - ball.radius < 0) {
+      ball.cx = ball.radius;
+      ball.cvx *= -1;
+    }
+    if (ball.cx + ball.radius > canvas.width) {
+      ball.cx = canvas.width - ball.radius;
+      ball.cvx *= -1;
+    }
     // 플레이어 충돌
     if (
       ball.active &&
@@ -1100,6 +1306,23 @@ document.getElementById('skipStageBtn').onclick = function() {
     nextStage();
   }
 };
+
+// 게임 설명 토글 버튼 기능 추가
+document.getElementById('info-toggle').addEventListener('click', function() {
+  const infoPanel = document.getElementById('info');
+  if (infoPanel.classList.contains('visible')) {
+    infoPanel.classList.remove('visible');
+    this.textContent = '게임 설명 보기';
+  } else {
+    infoPanel.classList.add('visible');
+    this.textContent = '게임 설명 닫기';
+  }
+});
+
+// 초기 모바일 상태 설정
+if (isMobileDevice()) {
+  document.getElementById('info').classList.remove('visible');
+}
 
 function loop() {
   update();
