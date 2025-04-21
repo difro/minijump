@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Jump King</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+    
+    /* Responsive layout containers */
+    .game-container { 
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    
+    canvas { 
+      display: block; 
+      background: #87ceeb; 
+      width: 100%;
+      max-width: 500px;
+      height: auto;
+    }
+    
+    #info {
+      position: absolute;
+      left: 105%;
+      top: 70px;
+      width: 320px;
+      background: rgba(255,255,255,0.95);
+      border-radius: 10px;
+      padding: 18px 20px 18px 20px;
+      box-shadow: 2px 2px 8px #aaa;
+      font-size: 16px;
+      color: #222;
+      z-index: 10;
+    }
+    
+    /* Mobile layout - info panel below the canvas */
+    @media (max-width: 900px) {
+      .game-container {
+        display: flex;
+        flex-direction: column;
+      }
+      
+      #info {
+        position: relative;
+        left: 0;
+        top: 0;
+        width: calc(100% - 40px);
+        margin: 10px auto;
+        max-width: 500px;
+      }
+      
+      canvas {
+        margin: 0 auto;
+      }
+    }
+    
+    .color-box {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      margin-right: 6px;
+      vertical-align: middle;
+      border: 1px solid #888;
+    }
+    
+    .desc-row { margin-bottom: 8px; }
+    
+    /* Mobile controls */
+    .mobile-controls {
+      display: none; /* Hidden by default, shown on mobile */
+      position: absolute;
+      bottom: 30px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      z-index: 30;
+    }
+    
+    .mobile-controls button {
+      width: 80px;
+      height: 80px;
+      margin: 0 20px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.7);
+      border: 3px solid #444;
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+      touch-action: manipulation;
+    }
+    
+    @media (max-width: 768px) {
+      .mobile-controls {
+        display: flex;
+        justify-content: space-around;
+      }
+      
+      #skipStageBtn {
+        position: relative;
+        left: auto;
+        top: auto;
+        margin: 10px auto;
+        width: 80%;
+        max-width: 300px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="game-container">
+  <canvas id="game"></canvas>
+  
+  <!-- Mobile controls -->
+  <div class="mobile-controls">
+    <button id="leftBtn">←</button>
+    <button id="jumpBtn">↑</button>
+    <button id="rightBtn">→</button>
+  </div>
+  
+  <div id="info">
+    <!-- 설명 내용은 drawInfo()에서 동적으로 채움 -->
+  </div>
+</div>
+
+<button id="skipStageBtn" style="position:absolute; right:20px; top:30px; width:260px; height:40px; font-size:18px; border-radius:8px; border:1px solid #888; background:#f5f5f5; cursor:pointer; z-index:20;">
+  다음 스테이지로 스킵
+</button>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const CANVAS_WIDTH = 500;
+const CANVAS_HEIGHT = 800;
+canvas.width = CANVAS_WIDTH;
+canvas.height = CANVAS_HEIGHT;
+
+// Handle canvas resizing for responsive layout
+function resizeCanvas() {
+  const containerWidth = canvas.parentElement.clientWidth;
+  const scale = containerWidth / CANVAS_WIDTH;
+  
+  // Scale canvas using CSS, maintain aspect ratio
+  canvas.style.height = (CANVAS_HEIGHT * scale) + 'px';
+}
+
+// Initial resize and add listener
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const player = {
+  x: 180,
+  y: 680,
+  width: 20,
+  height: 20,
+  color: 'red',
+  vx: 0,
+  vy: 0,
+  jumpPower: -10,
+  grounded: false,
+  canDoubleJump: false,
+  hasJumped: false
+};
+
+let keys = {};
+const gravity = 0.6;
+let gameOver = false;
+let gameClear = false;
+let currentStage = 0;
+
+// 죽은 횟수 변수
+let deathCount = 0;
+
+// Mobile touch controls
+const leftBtn = document.getElementById('leftBtn');
+const jumpBtn = document.getElementById('jumpBtn');
+const rightBtn = document.getElementById('rightBtn');
+
+// Mobile control event listeners
+leftBtn.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  keys['ArrowLeft'] = true;
+});
+
+leftBtn.addEventListener('touchend', function(e) {
+  e.preventDefault();
+  keys['ArrowLeft'] = false;
+});
+
+rightBtn.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  keys['ArrowRight'] = true;
+});
+
+rightBtn.addEventListener('touchend', function(e) {
+  e.preventDefault();
+  keys['ArrowRight'] = false;
+});
+
+jumpBtn.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  // Simulate space bar press for jumping
+  if (gameClear) {
+    currentStage = 0;
+    gameClear = false;
+    restart();
+    return;
+  }
+  
+  if (gameOver) {
+    restart();
+    return;
+  }
+  
+  if (player.grounded) {
+    player.vy = player.jumpPower;
+    player.grounded = false;
+    player.canDoubleJump = true;
+  } else if (player.canDoubleJump) {
+    player.vy = player.jumpPower;
+    player.canDoubleJump = false;
+  }
+});
+
+// Double tap to restart when game over (mobile)
+let lastTap = 0;
+canvas.addEventListener('touchend', function(e) {
+  const currentTime = new Date().getTime();
+  const tapLength = currentTime - lastTap;
+  
+  if (tapLength < 300 && tapLength > 0) {
+    if (gameOver) restart();
+    if (gameClear) {
+      currentStage = 0;
+      gameClear = false;
+      restart();
+    }
+  }
+  
+  lastTap = currentTime;
+});
+
+// 레이저 함정 정의
+function createLaser(x, y, direction, interval, duration, length) {
+  return { x, y, direction, interval, duration, length, timer: 0, active: false };
+}
+
+function createStageEasy(startY) {
+  // 1스테이지: 시작 발판 포함, 여러 발판...
+  return [
+    { x: 180, y: startY, width: 100, height: 12 }, // 시작 발판
+    { x: 220, y: startY - 60, width: 90, height: 12 },
+    { x: 160, y: startY - 120, width: 80, height: 12 },
+    { x: 200, y: startY - 180, width: 80, height: 12 },
+    { x: 240, y: startY - 240, width: 80, height: 12 },
+    { x: 180, y: startY - 300, width: 80, height: 12 },
+    { x: 220, y: startY - 360, width: 80, height: 12 },
+    { x: 160, y: startY - 420, width: 80, height: 12 },
+    { x: 200, y: startY - 480, width: 100, height: 12, isDoor: true }
+  ];
+}
+
+function createStageNormal(startY, offsetX = 0) {
+  // 2~3스테이지: 시작 발판 추가
+  return [
+    { x: 200 + offsetX, y: startY, width: 80, height: 10 }, // 시작 발판
+    { x: 150 + offsetX, y: startY - 50, width: 70, height: 10 },
+    { x: 250 + offsetX, y: startY - 110, width: 70, height: 10 },
+    { x: 180 + offsetX, y: startY - 170, width: 60, height: 10 },
+    { x: 100 + offsetX, y: startY - 230, width: 60, height: 10 },
+    { x: 300 + offsetX, y: startY - 290, width: 60, height: 10 },
+    { x: 200 + offsetX, y: startY - 350, width: 80, height: 10, isDoor: true }
+  ];
+}
+
+function createStageHard(startY, offsetX = 0) {
+  // 4~5스테이지: 시작 발판 추가
+  return [
+    { x: 200 + offsetX, y: startY, width: 80, height: 10 }, // 시작 발판
+    { x: 150 + offsetX, y: startY - 40, width: 60, height: 10 },
+    { x: 250 + offsetX, y: startY - 80, width: 60, height: 10 },
+    { x: 180 + offsetX, y: startY - 120, width: 60, height: 10 },
+    { x: 100 + offsetX, y: startY - 160, width: 60, height: 10 },
+    { x: 300 + offsetX, y: startY - 200, width: 60, height: 10 },
+    { x: 220 + offsetX, y: startY - 240, width: 60, height: 10 },
+    { x: 160 + offsetX, y: startY - 280, width: 60, height: 10 },
+    { x: 250 + offsetX, y: startY - 320, width: 60, height: 10 },
+    { x: 180 + offsetX, y: startY - 360, width: 60, height: 10 },
+    { x: 100 + offsetX, y: startY - 400, width: 60, height: 10 },
+    { x: 300 + offsetX, y: startY - 440, width: 60, height: 10 },
+    { x: 200 + offsetX, y: startY - 480, width: 60, height: 10 },
+    { x: 120 + offsetX, y: startY - 520, width: 60, height: 10 },
+    { x: 280 + offsetX, y: startY - 560, width: 60, height: 10 },
+    { x: 180 + offsetX, y: startY - 600, width: 60, height: 10 },
+    { x: 100 + offsetX, y: startY - 640, width: 60, height: 10 },
+    { x: 300 + offsetX, y: startY - 680, width: 60, height: 10 },
+    { x: 200 + offsetX, y: startY - 720, width: 60, height: 10, isDoor: true }
+  ];
+}
+
+function createStageExtraHard(startY, offsetX = 0) {
+  // 7스테이지: 난이도 완화, 발판 간격을 줄이고 개수 증가
+  return [
+    { x: 200 + offsetX, y: startY, width: 80, height: 12 },
+    { x: 140 + offsetX, y: startY - 50, width: 70, height: 12 },
+    { x: 260 + offsetX, y: startY - 100, width: 70, height: 12 },
+    { x: 180 + offsetX, y: startY - 150, width: 60, height: 12 },
+    { x: 100 + offsetX, y: startY - 200, width: 60, height: 12 },
+    { x: 300 + offsetX, y: startY - 250, width: 60, height: 12 },
+    { x: 220 + offsetX, y: startY - 300, width: 60, height: 12 },
+    { x: 160 + offsetX, y: startY - 350, width: 60, height: 12 },
+    { x: 250 + offsetX, y: startY - 400, width: 60, height: 12 },
+    { x: 180 + offsetX, y: startY - 450, width: 60, height: 12 },
+    { x: 100 + offsetX, y: startY - 500, width: 60, height: 12 },
+    { x: 300 + offsetX, y: startY - 550, width: 60, height: 12 },
+    { x: 200 + offsetX, y: startY - 600, width: 80, height: 12 },
+    { x: 140 + offsetX, y: startY - 650, width: 70, height: 12 },
+    { x: 260 + offsetX, y: startY - 700, width: 70, height: 12 },
+    { x: 200 + offsetX, y: startY - 750, width: 80, height: 12, isDoor: true }
+  ];
+}
+
+function createStageLaser(startY, offsetX = 0) {
+  // 8, 9스테이지: 레이저만 등장, 발판은 적당히 배치
+  return [
+    { x: 200 + offsetX, y: startY, width: 80, height: 12 },
+    { x: 140 + offsetX, y: startY - 60, width: 70, height: 12 },
+    { x: 260 + offsetX, y: startY - 120, width: 70, height: 12 },
+    { x: 180 + offsetX, y: startY - 180, width: 60, height: 12 },
+    { x: 100 + offsetX, y: startY - 240, width: 60, height: 12 },
+    { x: 300 + offsetX, y: startY - 300, width: 60, height: 12 },
+    { x: 220 + offsetX, y: startY - 360, width: 60, height: 12 },
+    { x: 160 + offsetX, y: startY - 420, width: 60, height: 12 },
+    { x: 250 + offsetX, y: startY - 480, width: 60, height: 12 },
+    { x: 180 + offsetX, y: startY - 540, width: 60, height: 12 },
+    { x: 200 + offsetX, y: startY - 600, width: 80, height: 12, isDoor: true }
+  ];
+}
+
+function createStageBallTrap(startY, offsetX = 0) {
+  // 10스테이지: 발판 + 레이저 + 구르는 공 함정
+  return [
+    { x: 200 + offsetX, y: startY, width: 80, height: 12 },
+    { x: 140 + offsetX, y: startY - 60, width: 70, height: 12 },
+    { x: 260 + offsetX, y: startY - 120, width: 70, height: 12 },
+    { x: 180 + offsetX, y: startY - 180, width: 60, height: 12 },
+    { x: 100 + offsetX, y: startY - 240, width: 60, height: 12 },
+    { x: 300 + offsetX, y: startY - 300, width: 60, height: 12 },
+    { x: 220 + offsetX, y: startY - 360, width: 60, height: 12 },
+    { x: 160 + offsetX, y: startY - 420, width: 60, height: 12 },
+    { x: 250 + offsetX, y: startY - 480, width: 60, height: 12 },
+    { x: 180 + offsetX, y: startY - 540, width: 60, height: 12 },
+    { x: 200 + offsetX, y: startY - 600, width: 80, height: 12, isDoor: true }
+  ];
+}
+
+function createStageVanish(startY, offsetX = 0) {
+  // 11스테이지: 시작 발판 1개 + 사라지는 발판 + 레이저 + 공
+  const plats = [
+    { x: 200 + offsetX, y: startY, width: 80, height: 12, isStart: true }, // 시작 발판(안 사라짐)
+    // 사라지는 발판들
+    { x: 140 + offsetX, y: startY - 60, width: 70, height: 12, vanish: true },
+    { x: 260 + offsetX, y: startY - 120, width: 70, height: 12, vanish: true },
+    { x: 180 + offsetX, y: startY - 180, width: 60, height: 12, vanish: true },
+    { x: 100 + offsetX, y: startY - 240, width: 60, height: 12, vanish: true },
+    { x: 300 + offsetX, y: startY - 300, width: 60, height: 12, vanish: true },
+    { x: 220 + offsetX, y: startY - 360, width: 60, height: 12, vanish: true },
+    { x: 160 + offsetX, y: startY - 420, width: 60, height: 12, vanish: true },
+    { x: 250 + offsetX, y: startY - 480, width: 60, height: 12, vanish: true },
+    { x: 180 + offsetX, y: startY - 540, width: 60, height: 12, vanish: true },
+    { x: 200 + offsetX, y: startY - 600, width: 80, height: 12, isDoor: true }
+  ];
+  return plats;
+}
+
+function createStageMissile(startY, offsetX = 0) {
+  // 12스테이지: 일부 회색(사라지는) 발판 포함
+  return [
+    { x: 200 + offsetX, y: startY, width: 80, height: 12, isStart: true }, // 시작 발판
+    { x: 140 + offsetX, y: startY - 60, width: 70, height: 12, vanish: true }, // 회색
+    { x: 260 + offsetX, y: startY - 120, width: 70, height: 12 },
+    { x: 180 + offsetX, y: startY - 180, width: 60, height: 12, vanish: true }, // 회색
+    { x: 100 + offsetX, y: startY - 240, width: 60, height: 12 },
+    { x: 300 + offsetX, y: startY - 300, width: 60, height: 12, vanish: true }, // 회색
+    { x: 220 + offsetX, y: startY - 360, width: 60, height: 12 },
+    { x: 160 + offsetX, y: startY - 420, width: 60, height: 12 },
+    { x: 250 + offsetX, y: startY - 480, width: 60, height: 12, vanish: true }, // 회색
+    { x: 180 + offsetX, y: startY - 540, width: 60, height: 12 },
+    { x: 200 + offsetX, y: startY - 600, width: 80, height: 12, isDoor: true }
+  ];
+}
+
+function createStageKeyDoor(startY, offsetX = 0) {
+  // 13스테이지: 오른쪽 아래에 문, 주변 벽, 위에 열쇠문, 맨 위 어딘가에 열쇠, 회색 발판, 레이저, 핑크색 튀는 공
+  const plats = [
+    // 기본 발판
+    { x: 40, y: startY, width: 80, height: 12 }, // 시작 발판
+    { x: 120, y: startY - 60, width: 60, height: 12, vanish: true }, // 회색
+    { x: 200, y: startY - 120, width: 60, height: 12 },
+    { x: 300, y: startY - 180, width: 60, height: 12, vanish: true }, // 회색
+    { x: 400, y: startY - 240, width: 60, height: 12 },
+    { x: 250, y: startY - 320, width: 60, height: 12 },
+    { x: 100, y: startY - 400, width: 60, height: 12, vanish: true }, // 회색
+    { x: 350, y: startY - 480, width: 60, height: 12 },
+    { x: 200, y: 60, width: 60, height: 12 }, // 맨 위 열쇠 발판
+    // 오른쪽 아래 문(열쇠문)
+    { x: 420, y: 780, width: 60, height: 20, isDoor: true, isKeyDoor: true },
+    // 문 위쪽에 벽(좌/우/위)
+    { x: 420, y: 760, width: 60, height: 20, isWall: true },
+    { x: 480, y: 700, width: 20, height: 80, isWall: true },
+    { x: 400, y: 700, width: 20, height: 80, isWall: true }
+  ];
+  // 열쇠 위치 정보(플랫폼이 아님)
+  plats.key = { x: 230, y: 40, width: 24, height: 24 };
+  return plats;
+}
+
+// 스테이지 난이도별로 구성
+const stages = [
+  createStageEasy(750),               // 1스테이지: 매우 쉬움
+  createStageNormal(750, 30),         // 2스테이지: 보통
+  createStageNormal(750, -40),        // 3스테이지: 보통
+  createStageHard(750, 60),           // 4스테이지: 어려움
+  createStageHard(750, -60),          // 5스테이지: 어려움
+  createStageHard(750, 0),            // 6스테이지: 매우 어려움(기존 hard 재활용)
+  createStageExtraHard(750, 0),       // 7스테이지: 극악
+  createStageLaser(750, 0),           // 8스테이지: 레이저
+  createStageLaser(750, 60),          // 9스테이지: 레이저
+  createStageBallTrap(750, 0),        // 10스테이지: 레이저+공
+  createStageVanish(750, 0),          // 11스테이지: 사라지는 발판+공+레이저
+  createStageMissile(750, 0),         // 12스테이지: 사라지는 발판+레이저+공+유도탄
+  createStageKeyDoor(750, 0),         // 13스테이지: 열쇠문/열쇠/벽/특수공
+];
+
+// 각 난이도에 맞는 함정 레이아웃
+const trapLayouts = [
+  // 1스테이지: 거의 함정 없음
+  [
+    // 일부러 쉬운 함정만 1~2개
+    { x: 220, y: 690, width: 30, height: 10 }
+  ],
+  // 2스테이지: 약간의 함정
+  [
+    { x: 220, y: 700, width: 30, height: 10 },
+    { x: 180, y: 600, width: 30, height: 10, bounce: true }
+  ],
+  // 3스테이지: 함정 조금 더 추가
+  [
+    { x: 230, y: 680, width: 30, height: 10 },
+    { x: 170, y: 570, width: 30, height: 10, bounce: true },
+    { x: 250, y: 500, width: 30, height: 10, teleport: { x: 210, y: 700 } }
+  ],
+  // 4스테이지: 기존과 비슷하게 함정 많음
+  [
+    { x: 210, y: 710, width: 30, height: 10 },
+    { x: 260, y: 670, width: 30, height: 10 },
+    { x: 100, y: 630, width: 30, height: 10 },
+    { x: 300, y: 590, width: 30, height: 10 },
+    { x: 150, y: 550, width: 30, height: 10 },
+    { x: 250, y: 510, width: 30, height: 10 },
+    { x: 120, y: 470, width: 30, height: 10 },
+    { x: 180, y: 430, width: 30, height: 10 },
+    { x: 220, y: 390, width: 30, height: 10, bounce: true },
+    { x: 300, y: 350, width: 30, height: 10, teleportToStart: true },
+    { x: 180, y: 310, width: 30, height: 10, teleport: { x: 100, y: 700 } }
+  ],
+  // 5스테이지: 기존과 비슷하게 함정 많음
+  [
+    { x: 160, y: 690, width: 30, height: 10 },
+    { x: 240, y: 650, width: 30, height: 10 },
+    { x: 180, y: 610, width: 30, height: 10 },
+    { x: 100, y: 570, width: 30, height: 10 },
+    { x: 300, y: 530, width: 30, height: 10, bounce: true },
+    { x: 200, y: 490, width: 30, height: 10, teleport: { x: 180, y: 300 } },
+    { x: 120, y: 450, width: 30, height: 10 },
+    { x: 250, y: 410, width: 30, height: 10 },
+    { x: 150, y: 370, width: 30, height: 10 },
+    { x: 220, y: 330, width: 30, height: 10, teleportToStart: true }
+  ],
+  // 6스테이지: 함정 많음, 순간이동/튕김/즉사 섞음
+  [
+    { x: 210, y: 710, width: 30, height: 10 },
+    { x: 260, y: 670, width: 30, height: 10, bounce: true },
+    { x: 100, y: 630, width: 30, height: 10, teleport: { x: 300, y: 700 } },
+    { x: 300, y: 590, width: 30, height: 10 },
+    { x: 150, y: 550, width: 30, height: 10, bounce: true },
+    { x: 250, y: 510, width: 30, height: 10, teleportToStart: true },
+    { x: 120, y: 470, width: 30, height: 10 },
+    { x: 180, y: 430, width: 30, height: 10, bounce: true },
+    { x: 220, y: 390, width: 30, height: 10, teleport: { x: 100, y: 700 } },
+    { x: 300, y: 350, width: 30, height: 10, teleportToStart: true },
+    { x: 180, y: 310, width: 30, height: 10 }
+  ],
+  // 7스테이지: 극악, 순간이동/튕김/즉사/처음으로 섞음 (난이도 완화)
+  [
+    { x: 200, y: 740, width: 30, height: 10, bounce: true },
+    { x: 120, y: 700, width: 30, height: 10, teleport: { x: 280, y: 700 } },
+    { x: 100, y: 580, width: 30, height: 10, bounce: true },
+    { x: 300, y: 540, width: 30, height: 10, teleport: { x: 100, y: 700 } },
+    { x: 220, y: 500, width: 30, height: 10 },
+    { x: 250, y: 420, width: 30, height: 10, bounce: true },
+    { x: 180, y: 380, width: 30, height: 10 },
+    // 레이저 추가 (가로, 2초마다 0.7초간 발사)
+    { laser: true, x: 100, y: 650, direction: 'horizontal', interval: 120, duration: 42, length: 300 },
+    // 레이저 추가 (세로, 3초마다 1초간 발사)
+    { laser: true, x: 250, y: 400, direction: 'vertical', interval: 180, duration: 60, length: 200 }
+  ],
+  // 8스테이지: 레이저만 등장
+  [
+    { laser: true, x: 120, y: 720, direction: 'horizontal', interval: 100, duration: 40, length: 260 },
+    { laser: true, x: 250, y: 600, direction: 'vertical', interval: 120, duration: 50, length: 300 },
+    { laser: true, x: 180, y: 500, direction: 'horizontal', interval: 80, duration: 30, length: 200 },
+    { laser: true, x: 300, y: 400, direction: 'vertical', interval: 90, duration: 30, length: 350 }
+  ],
+  // 9스테이지: 레이저만 등장, 더 촘촘하게
+  [
+    // 시작 위치와 겹치지 않도록 y=750, x=100 레이저를 y=700으로 내림
+    { laser: true, x: 100, y: 700, direction: 'horizontal', interval: 80, duration: 32, length: 350 },
+    // 나머지 레이저는 시작 위치와 겹치지 않으니 그대로 둠
+    { laser: true, x: 250, y: 650, direction: 'vertical', interval: 100, duration: 40, length: 350 },
+    { laser: true, x: 180, y: 550, direction: 'horizontal', interval: 70, duration: 28, length: 250 },
+    { laser: true, x: 300, y: 450, direction: 'vertical', interval: 90, duration: 36, length: 350 },
+    { laser: true, x: 150, y: 350, direction: 'horizontal', interval: 60, duration: 24, length: 300 }
+  ],
+  // 10스테이지: 레이저+공 함정
+  [
+    // 레이저 2개
+    { laser: true, x: 120, y: 720, direction: 'horizontal', interval: 100, duration: 40, length: 260 },
+    { laser: true, x: 250, y: 500, direction: 'vertical', interval: 120, duration: 50, length: 300 },
+    // 기존 구르는 공 3개
+    { ball: true, x: 100, y: 200, vx: 2.5, vy: 0, radius: 18, interval: 180, delay: 0 },
+    { ball: true, x: 350, y: 400, vx: -2, vy: 0, radius: 18, interval: 220, delay: 60 },
+    { ball: true, x: 250, y: 600, vx: 1.5, vy: 0, radius: 16, interval: 160, delay: 120 },
+    // 추가 구르는 공 3개
+    { ball: true, x: 400, y: 150, vx: -2.2, vy: 0, radius: 15, interval: 200, delay: 30 },
+    { ball: true, x: 60, y: 350, vx: 2.8, vy: 0, radius: 14, interval: 170, delay: 90 },
+    { ball: true, x: 300, y: 100, vx: 1.7, vy: 0, radius: 13, interval: 210, delay: 150 }
+  ],
+  // 11스테이지: 레이저+공
+  [
+    // 레이저 2개
+    { laser: true, x: 120, y: 720, direction: 'horizontal', interval: 90, duration: 36, length: 260 },
+    { laser: true, x: 250, y: 400, direction: 'vertical', interval: 110, duration: 44, length: 350 },
+    // 구르는 공 2개
+    { ball: true, x: 100, y: 200, vx: 2.5, vy: 0, radius: 18, interval: 180, delay: 0 },
+    { ball: true, x: 350, y: 400, vx: -2, vy: 0, radius: 18, interval: 220, delay: 60 }
+  ],
+  // 12스테이지: 사라지는 발판+레이저+공+유도탄
+  [
+    // 중간 레이저
+    { laser: true, x: 120, y: 400, direction: 'horizontal', interval: 90, duration: 36, length: 260 },
+    // 위쪽 구르는 공
+    { ball: true, x: 250, y: 150, vx: 2.5, vy: 0, radius: 18, interval: 180, delay: 0 },
+    // 유도탄(미사일) - 아래에서 위로, 플레이어를 따라감
+    { missile: true, x: 60, y: 780, speed: 2.2, cooldown: 120, delay: 0 },
+    { missile: true, x: 400, y: 780, speed: 2.2, cooldown: 160, delay: 60 }
+  ],
+  // 13스테이지: 레이저, 핑크색 튀는 공, 회색 발판 약간
+  [
+    // 레이저
+    { laser: true, x: 100, y: 500, direction: 'horizontal', interval: 90, duration: 36, length: 300 },
+    { laser: true, x: 250, y: 300, direction: 'vertical', interval: 120, duration: 50, length: 350 },
+    // 핑크색 튀는 공 (bouncy: true, color: pink)
+    { ball: true, x: 120, y: 200, vx: 2.5, vy: -8, radius: 18, interval: 180, delay: 0, bouncy: true, color: "#e06" },
+    { ball: true, x: 380, y: 400, vx: -2.2, vy: -7, radius: 18, interval: 220, delay: 60, bouncy: true, color: "#e06" }
+    // 회색 발판은 플랫폼에 포함
+  ]
+];
+
+// 레이저만 추출
+function getLasersForStage(stageIdx) {
+  return trapLayouts[stageIdx].filter(t => t.laser).map(t => ({
+    ...t,
+    timer: 0,
+    active: false
+  }));
+}
+
+// 기존 함정만 추출
+function getTrapsForStage(stageIdx) {
+  // 쉬운 스테이지는 추가 함정 거의 없음, 뒤로 갈수록 기존 방식
+  if (stageIdx === 0) {
+    return trapLayouts[stageIdx];
+  }
+  if (stageIdx === 1 || stageIdx === 2) {
+    return trapLayouts[stageIdx].concat(
+      stages[stageIdx]
+        .filter(p => !p.isDoor)
+        .map((p, i) => {
+          if (i % 5 === 0) return { x: p.x + 10, y: p.y - 10, width: 30, height: 10 };
+          return null;
+        })
+        .filter(t => t !== null)
+    );
+  }
+  // 4,5스테이지는 기존처럼 함정 많이 추가
+  if (stageIdx >= 6) {
+    return trapLayouts[stageIdx].filter(t => !t.laser);
+  }
+  return trapLayouts[stageIdx].concat(
+    stages[stageIdx]
+      .filter(p => !p.isDoor)
+      .map((p, i) => {
+        if (i % 3 === 0) return { x: p.x + 10, y: p.y - 10, width: 30, height: 10 };
+        if (i % 5 === 0) return { x: p.x + 5, y: p.y - 10, width: 30, height: 10, bounce: true };
+        if (i % 7 === 0) return { x: p.x + 5, y: p.y - 10, width: 30, height: 10, teleport: { x: 100, y: 700 } };
+        return null;
+      })
+      .filter(t => t !== null)
+  );
+}
+
+function getBallsForStage(stageIdx) {
+  return trapLayouts[stageIdx].filter(t => t.ball).map(t => ({
+    ...t,
+    cx: t.x,
+    cy: t.y,
+    cvx: t.vx,
+    cvy: t.vy,
+    timer: 0,
+    active: false
+  }));
+}
+
+// 유도탄 상태 관리
+function getMissilesForStage(stageIdx) {
+  return (trapLayouts[stageIdx] || [])
+    .filter(t => t.missile)
+    .map(t => ({
+      ...t,
+      cx: t.x,
+      cy: t.y,
+      active: false,
+      timer: 0
+    }));
+}
+
+// 사라지는 발판 상태 관리
+let vanishStates = {};
+
+function resetVanishStates() {
+  vanishStates = {};
+  const plats = stages[currentStage];
+  plats.forEach((p, idx) => {
+    if (p.vanish) vanishStates[idx] = { triggered: false, timer: 0, vanished: false };
+  });
+}
+
+let platforms = stages[currentStage];
+let traps = getTrapsForStage(currentStage);
+let lasers = getLasersForStage(currentStage);
+let balls = getBallsForStage(currentStage);
+let missiles = getMissilesForStage(currentStage);
+resetVanishStates();
+
+// 열쇠 상태
+let hasKey = false;
+
+window.addEventListener('keydown', e => {
+  if (!keys[e.code]) {
+    if (e.code === 'Space') {
+      if (gameClear) {
+        currentStage = 0;
+        gameClear = false;
+        restart();
+        return;
+      }
+      if (player.grounded) {
+        player.vy = player.jumpPower;
+        player.grounded = false;
+        player.canDoubleJump = true;
+    // 플레이어 충돌
+    if (
+      ball.active &&
+      player.x + player.width > ball.cx - ball.radius &&
+      player.x < ball.cx + ball.radius &&
+      player.y + player.height > ball.cy - ball.radius &&
+      player.y < ball.cy + ball.radius
+    ) {
+      gameOver = true;
+      deathCount++;
+      drawInfo();
+    }
+  }
+}
+
+function updateMissiles() {
+  for (let missile of missiles) {
+    missile.timer++;
+    // 쿨다운+delay마다 미사일 재생성
+    if (!missile.active && missile.timer >= (missile.cooldown + (missile.delay || 0))) {
+      missile.cx = missile.x;
+      missile.cy = missile.y;
+      missile.active = true;
+      missile.timer = 0;
+      missile.life = 240; // 미사일 수명(프레임 단위, 예: 4초)
+    }
+    if (!missile.active && missile.timer < (missile.delay || 0)) continue;
+    if (!missile.active) continue;
+
+    // 수명 감소 및 만료시 비활성화
+    if (missile.life !== undefined) {
+      missile.life--;
+      if (missile.life <= 0) {
+        missile.active = false;
+        missile.timer = 0;
+        continue;
+      }
+    }
+
+    // 플레이어 방향으로 속도 계산
+    let dx = player.x + player.width / 2 - missile.cx;
+    let dy = player.y + player.height / 2 - missile.cy;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+
+    // 미사일이 플레이어와 350px 이상 멀어지면 비활성화
+    if (dist > 350) {
+      missile.active = false;
+      missile.timer = 0;
+      continue;
+    }
+
+    if (dist > 0) {
+      missile.cx += (dx / dist) * missile.speed;
+      missile.cy += (dy / dist) * missile.speed;
+    }
+
+    // 벽/바닥에 닿으면 비활성화
+    if (
+      missile.cx < 0 || missile.cx > canvas.width ||
+      missile.cy < 0 || missile.cy > canvas.height
+    ) {
+      missile.active = false;
+      missile.timer = 0;
+      continue;
+    }
+
+    // 플레이어 충돌
+    if (
+      missile.active &&
+      player.x + player.width > missile.cx - 12 &&
+      player.x < missile.cx + 12 &&
+      player.y + player.height > missile.cy - 12 &&
+      player.y < missile.cy + 12
+    ) {
+      gameOver = true;
+      deathCount++;
+      drawInfo();
+    }
+  }
+}
+
+function updateVanishPlatforms() {
+  // vanishStates: { idx: {triggered, timer, vanished} }
+  for (const idx in vanishStates) {
+    const state = vanishStates[idx];
+    if (state.triggered && !state.vanished) {
+      state.timer++;
+      if (state.timer > 45) { // 45프레임(약 0.75초) 후 사라짐
+        state.vanished = true;
+      }
+    }
+  }
+}
+
+function update() {
+  if (gameOver || gameClear) return;
+
+  if (keys['ArrowLeft']) player.vx = -3;
+  else if (keys['ArrowRight']) player.vx = 3;
+  else player.vx = 0;
+
+  player.vy += gravity;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  player.grounded = false;
+  for (let i = 0; i < platforms.length; i++) {
+    const p = platforms[i];
+    // 사라진 발판은 충돌 판정에서 제외
+    if (p.vanish && vanishStates[i] && vanishStates[i].vanished) continue;
+    if (
+      player.x < p.x + p.width &&
+      player.x + player.width > p.x &&
+      player.y + player.height > p.y &&
+      player.y + player.height < p.y + p.height + 5 &&
+      player.vy >= 0
+    ) {
+      player.y = p.y - player.height;
+      player.vy = 0;
+      player.grounded = true;
+      player.canDoubleJump = false;
+    }
+  }
+
+  if (player.grounded) player.canDoubleJump = true;
+
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+  if (player.y > canvas.height) {
+    gameOver = true;
+    deathCount++;
+    drawInfo();
+  }
+
+  for (let p of platforms) {
+    if (p.isDoor &&
+      player.x < p.x + p.width &&
+      player.x + player.width > p.x &&
+      player.y < p.y + p.height &&
+      player.y + player.height > p.y
+    ) {
+      nextStage();
+    }
+  }
+
+  for (let t of traps) {
+    if (
+      player.x < t.x + t.width &&
+      player.x + player.width > t.x &&
+      player.y < t.y + t.height &&
+      player.y + player.height > t.y
+    ) {
+      if (t.teleport) {
+        player.x = t.teleport.x;
+        player.y = t.teleport.y;
+      } else if (t.teleportToStart) {
+        currentStage = 0;
+        deathCount++;
+        restart();
+        drawInfo();
+        return;
+      } else if (t.bounce) {
+        player.vy = -15;
+      } else {
+        gameOver = true;
+        deathCount++;
+        drawInfo();
+      }
+    }
+  }
+
+  updateLasers();
+  updateBalls();
+  updateMissiles();
+  updateVanishPlatforms();
+
+  // 사라지는 발판 처리
+  if (currentStage === 10) { // 11스테이지(0-based)
+    platforms.forEach((p, idx) => {
+      // 이미 사라진 발판은 트리거도 무시
+      if (p.vanish && vanishStates[idx] && !vanishStates[idx].vanished) {
+        // 플레이어가 밟으면 타이머 시작
+        if (
+          player.x + player.width > p.x &&
+          player.x < p.x + p.width &&
+          player.y + player.height > p.y - 2 &&
+          player.y + player.height < p.y + p.height + 5 &&
+          player.vy >= 0
+        ) {
+          vanishStates[idx].triggered = true;
+        }
+      }
+    });
+  }
+
+  // 13스테이지: 열쇠 획득/문 열기/벽 막힘
+  if (currentStage === 12) {
+    // 열쇠 획득
+    const key = platforms.key;
+    if (
+      key &&
+      !hasKey &&
+      player.x + player.width > key.x &&
+      player.x < key.x + key.width &&
+      player.y + player.height > key.y &&
+      player.y < key.y + key.height
+    ) {
+      hasKey = true;
+    }
+    // 벽 충돌(막힘)
+    for (let p of platforms) {
+      if (p.isWall &&
+        player.x < p.x + p.width &&
+        player.x + player.width > p.x &&
+        player.y < p.y + p.height &&
+        player.y + player.height > p.y
+      ) {
+        // 간단하게 튕겨냄
+        if (player.x + player.width / 2 < p.x + p.width / 2) player.x = p.x - player.width;
+        else player.x = p.x + p.width;
+      }
+    }
+    // 열쇠문(문)은 열쇠 없으면 통과 불가
+    for (let p of platforms) {
+      if (p.isDoor && p.isKeyDoor) {
+        if (
+          player.x < p.x + p.width &&
+          player.x + player.width > p.x &&
+          player.y < p.y + p.height &&
+          player.y + player.height > p.y
+        ) {
+          if (hasKey) {
+            nextStage();
+          } else {
+            // 문에 막힘
+            if (player.x + player.width / 2 < p.x + p.width / 2) player.x = p.x - player.width;
+            else player.x = p.x + p.width;
+          }
+        }
+      }
+    }
+  }
+}
+
+// 게임 설명/상태 표시 함수
+function drawInfo() {
+  const info = document.getElementById('info');
+  info.innerHTML = `
+    <div style="font-size:20px;font-weight:bold;margin-bottom:10px;">게임 설명</div>
+    <div class="desc-row"><span class="color-box" style="background:green"></span> <b>초록</b>: 일반 발판</div>
+    <div class="desc-row"><span class="color-box" style="background:blue"></span> <b>파랑</b>: 다음 스테이지 문</div>
+    <div class="desc-row"><span class="color-box" style="background:purple"></span> <b>보라</b>: 일반 함정 (즉사)</div>
+    <div class="desc-row"><span class="color-box" style="background:yellow"></span> <b>노랑</b>: 점프 함정 (높이 튐)</div>
+    <div class="desc-row"><span class="color-box" style="background:cyan"></span> <b>하늘</b>: 순간이동 함정</div>
+    <div class="desc-row"><span class="color-box" style="background:orange"></span> <b>주황</b>: 처음으로 순간이동</div>
+    <div class="desc-row"><span class="color-box" style="background:red"></span> <b>빨강선</b>: 레이저(주기적으로 발사, 닿으면 즉사)</div>
+    <div class="desc-row"><span class="color-box" style="background:#444"></span> <b>검은공</b>: 구르는 공(닿으면 즉사)</div>
+    <div class="desc-row"><span class="color-box" style="background:#e06"></span> <b>핑크공</b>: 튀는 공(닿으면 즉사)</div>
+    <div class="desc-row"><span class="color-box" style="background:#bbb"></span> <b>회색</b>: 밟으면 잠시 후 사라지는 발판</div>
+    <div class="desc-row"><span class="color-box" style="background:#e22"></span> <b>빨간원</b>: 유도 미사일(플레이어를 따라옴)</div>
+    <div class="desc-row"><span class="color-box" style="background:gold"></span> <b>열쇠</b>: 먹으면 열쇠문 통과 가능</div>
+    <div class="desc-row"><span class="color-box" style="background:#888"></span> <b>회색벽</b>: 통과 불가</div>
+    <hr>
+    <div class="desc-row"><b>스테이지</b>: ${currentStage+1} / ${stages.length}</div>
+    <div class="desc-row"><b>죽은 횟수</b>: ${deathCount}</div>
+    ${currentStage === 12 ? `<div class="desc-row"><b>열쇠</b>: ${hasKey ? '획득' : '미획득'}</div>` : ''}
+  `;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+
+  // 발판 그리기
+  platforms.forEach((p, idx) => {
+    if (p.vanish) {
+      // 사라진 발판은 그리지 않음
+      if (vanishStates[idx] && vanishStates[idx].vanished) return;
+      // 사라지기 직전이면 깜빡임
+      if (vanishStates[idx] && vanishStates[idx].triggered && vanishStates[idx].timer > 30) {
+        ctx.globalAlpha = (Math.floor(performance.now() / 100) % 2) ? 0.3 : 0.8;
+      } else {
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = '#bbb';
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+      ctx.globalAlpha = 1;
+    } else if (p.isWall) {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+    } else if (p.isDoor && p.isKeyDoor) {
+      ctx.fillStyle = hasKey ? '#1e90ff' : '#888';
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x, p.y, p.width, p.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillText('🔑', p.x + p.width / 2 - 8, p.y + 16);
+    } else {
+      ctx.fillStyle = p.isDoor ? 'blue' : 'green';
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+    }
+  });
+
+  // 열쇠 그리기(13스테이지)
+  if (currentStage === 12 && platforms.key && !hasKey) {
+    const key = platforms.key;
+    ctx.save();
+    ctx.fillStyle = 'gold';
+    ctx.strokeStyle = '#b88d00';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(key.x + key.width / 2, key.y + key.height / 2, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 18px Arial';
+    ctx.fillStyle = '#b88d00';
+    ctx.fillText('🔑', key.x + 2, key.y + 18);
+    ctx.restore();
+  }
+
+  for (let t of traps) {
+    if (t.teleportToStart) ctx.fillStyle = 'orange';
+    else if (t.teleport) ctx.fillStyle = 'cyan';
+    else if (t.bounce) ctx.fillStyle = 'yellow';
+    else ctx.fillStyle = 'purple';
+    ctx.fillRect(t.x, t.y, t.width, t.height);
+  }
+
+  // 레이저 그리기
+  for (let laser of lasers) {
+    if (laser.active) {
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      if (laser.direction === 'horizontal') {
+        ctx.moveTo(laser.x, laser.y);
+        ctx.lineTo(laser.x + laser.length, laser.y);
+      } else {
+        ctx.moveTo(laser.x, laser.y);
+        ctx.lineTo(laser.x, laser.y + laser.length);
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // 비활성화시 흐릿하게 표시(예고)
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = 'red';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      if (laser.direction === 'horizontal') {
+        ctx.moveTo(laser.x, laser.y);
+        ctx.lineTo(laser.x + laser.length, laser.y);
+      } else {
+        ctx.moveTo(laser.x, laser.y);
+        ctx.lineTo(laser.x, laser.y + laser.length);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // 구르는 공 그리기
+  for (let ball of balls) {
+    if (ball.active) {
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = ball.color || '#444';
+      ctx.beginPath();
+      ctx.arc(ball.cx, ball.cy, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = ball.color ? '#a04' : '#222';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // 유도탄(미사일) 그리기
+  for (let missile of missiles) {
+    if (missile.active) {
+      ctx.save();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#e22';
+      ctx.beginPath();
+      ctx.arc(missile.cx, missile.cy, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#900';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // 미사일 앞부분(플레이어 방향) 표시
+      let dx = player.x + player.width / 2 - missile.cx;
+      let dy = player.y + player.height / 2 - missile.cy;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0) {
+        ctx.save();
+        ctx.translate(missile.cx, missile.cy);
+        ctx.rotate(Math.atan2(dy, dx));
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(8, -3, 8, 6);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+  }
+
+  if (gameOver) {
+    ctx.fillStyle = 'black';
+    ctx.font = '30px Arial';
+    ctx.fillText('죽었다! 스페이스바로 재시작', 20, canvas.height / 2);
+  } else if (gameClear) {
+    ctx.fillStyle = 'black';
+    ctx.font = '30px Arial';
+    ctx.fillText('클리어! 스페이스바로 다시 시작', 20, canvas.height / 2);
+  }
+}
+
+document.getElementById('skipStageBtn').onclick = function() {
+  if (!gameClear && !gameOver && currentStage < stages.length - 1) {
+    nextStage();
+  }
+};
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+drawInfo();
+loop();
+</script>
+</body>
+</html>
