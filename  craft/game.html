@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mini Jump King</title>
   <style>
     body { margin: 0; overflow: hidden; }
@@ -30,96 +30,6 @@
       border: 1px solid #888;
     }
     .desc-row { margin-bottom: 8px; }
-    
-    /* Mobile controls */
-    #mobile-controls {
-      position: fixed;
-      bottom: 20px;
-      left: 0;
-      width: 100%;
-      display: flex;
-      justify-content: space-between;
-      padding: 0 20px;
-      box-sizing: border-box;
-      z-index: 20;
-      display: none; /* Hidden by default, shown on mobile */
-    }
-    
-    .control-btn {
-      background: rgba(255, 255, 255, 0.7);
-      border: 2px solid #444;
-      border-radius: 50%;
-      width: 70px;
-      height: 70px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      -webkit-touch-callout: none;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    
-    #jump-btn {
-      font-size: 30px;
-    }
-    
-    /* Info toggle button */
-    #info-toggle {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: rgba(255, 255, 255, 8);
-      border: 2px solid #444;
-      border-radius: 8px;
-      padding: 5px 10px;
-      font-size: 16px;
-      z-index: 30;
-      display: none; /* Hidden by default, shown on mobile */
-    }
-    
-    /* Responsive layout */
-    @media (max-width: 920px) {
-      #info {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        box-sizing: border-box;
-        overflow-y: auto;
-        padding-bottom: 100px; /* Extra padding to ensure scrolling works well */
-        display: none; /* Hidden by default on mobile */
-      }
-      
-      #info.visible {
-        display: block; /* Show only when toggled */
-      }
-      
-      #info-toggle {
-        display: block; /* Show toggle on mobile */
-      }
-      
-      #skipStageBtn {
-        position: relative;
-        left: auto;
-        top: auto;
-        width: calc(100% - 40px);
-        margin: 10px auto;
-        display: block;
-      }
-      
-      canvas {
-        width: 100%;
-        height: auto;
-        max-height: 80vh;
-      }
-      
-      #mobile-controls {
-        display: flex;
-      }
-    }
   </style>
 </head>
 <body>
@@ -127,16 +37,9 @@
 <div id="info">
   <!-- 설명 내용은 drawInfo()에서 동적으로 채움 -->
 </div>
-<button id="info-toggle">게임 설명 보기</button>
 <button id="skipStageBtn" style="position:absolute; left:840px; top:30px; width:260px; height:40px; font-size:18px; border-radius:8px; border:1px solid #888; background:#f5f5f5; cursor:pointer; z-index:20;">
   다음 스테이지로 스킵
 </button>
-<!-- 모바일 컨트롤 추가 -->
-<div id="mobile-controls">
-  <div id="left-btn" class="control-btn">←</div>
-  <div id="jump-btn" class="control-btn">↑</div>
-  <div id="right-btn" class="control-btn">→</div>
-</div>
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -328,25 +231,16 @@ function createStageKeyDoor(startY, offsetX = 0) {
     { x: 250, y: startY - 320, width: 60, height: 12 },
     { x: 100, y: startY - 400, width: 60, height: 12, vanish: true }, // 회색
     { x: 350, y: startY - 480, width: 60, height: 12 },
-    { x: 200, y: startY - 560, width: 60, height: 12 }, // 맨 위 열쇠 발판 (높이 조정)
-    
-    // 작은 플랫폼 추가 - 벽 안으로 들어갈 수 있게 발판 배치
-    { x: 420, y: 680, width: 40, height: 12 }, // 벽 위쪽으로 바로 들어갈 수 있도록 위치 변경
-    
-    // 벽 안에 열쇠 문 배치
-    // 왼쪽 벽 (입구 없음)
-    { x: 380, y: 700, width: 20, height: 100, isWall: true },
-    // 오른쪽 벽
-    { x: 480, y: 700, width: 20, height: 100, isWall: true },
-    // 위쪽 벽 (입구 있음) - 입구를 더 크게 만듦
-    { x: 380, y: 700, width: 30, height: 20, isWall: true }, // 왼쪽 1/3만 벽
-    { x: 450, y: 700, width: 30, height: 20, isWall: true }, // 오른쪽 1/3만 벽 (중간에 넓은 입구)
-    // 아래쪽에 열쇠문 배치 (벽으로 둘러싸인 공간 안에)
-    { x: 400, y: 780, width: 80, height: 20, isDoor: true, isKeyDoor: true },
+    { x: 200, y: 60, width: 60, height: 12 }, // 맨 위 열쇠 발판
+    // 오른쪽 아래 문(열쇠문)
+    { x: 420, y: 780, width: 60, height: 20, isDoor: true, isKeyDoor: true },
+    // 문 위쪽에 벽(좌/우/위)
+    { x: 420, y: 760, width: 60, height: 20, isWall: true },
+    { x: 480, y: 700, width: 20, height: 80, isWall: true },
+    { x: 400, y: 700, width: 20, height: 80, isWall: true }
   ];
-  
   // 열쇠 위치 정보(플랫폼이 아님)
-  plats.key = { x: 230, y: startY - 590, width: 24, height: 24 };
+  plats.key = { x: 230, y: 40, width: 24, height: 24 };
   return plats;
 }
 
@@ -591,10 +485,6 @@ resetVanishStates();
 // 열쇠 상태
 let hasKey = false;
 
-// 열쇠 획득 메시지 표시용 변수
-let keyMessageTimer = 0;
-const KEY_MESSAGE_DURATION = 120; // 약 2초간 메시지 표시
-
 window.addEventListener('keydown', e => {
   if (!keys[e.code]) {
     if (e.code === 'Space') {
@@ -619,115 +509,6 @@ window.addEventListener('keydown', e => {
 });
 
 window.addEventListener('keyup', e => keys[e.code] = false);
-
-// 모바일 컨트롤 이벤트 리스너 추가
-const leftBtn = document.getElementById('left-btn');
-const rightBtn = document.getElementById('right-btn');
-const jumpBtn = document.getElementById('jump-btn');
-
-// 터치 이벤트 처리
-let touchControls = {
-  left: false,
-  right: false
-};
-
-// 모바일 디바이스 감지
-function isMobileDevice() {
-  return (window.innerWidth <= 920) || 
-         ('ontouchstart' in window) || 
-         (navigator.maxTouchPoints > 0) ||
-         (navigator.msMaxTouchPoints > 0);
-}
-
-// 모바일 컨트롤 초기화
-function initMobileControls() {
-  if (isMobileDevice()) {
-    document.getElementById('mobile-controls').style.display = 'flex';
-  }
-  
-  // 왼쪽 버튼
-  leftBtn.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-    touchControls.left = true;
-    keys['ArrowLeft'] = true;
-  });
-  
-  leftBtn.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    touchControls.left = false;
-    keys['ArrowLeft'] = false;
-  });
-  
-  // 오른쪽 버튼
-  rightBtn.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-    touchControls.right = true;
-    keys['ArrowRight'] = true;
-  });
-  
-  rightBtn.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    touchControls.right = false;
-    keys['ArrowRight'] = false;
-  });
-  
-  // 점프 버튼
-  jumpBtn.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-    if (gameClear) {
-      currentStage = 0;
-      gameClear = false;
-      restart();
-      return;
-    }
-    
-    if (gameOver) {
-      restart();
-      return;
-    }
-    
-    if (player.grounded) {
-      player.vy = player.jumpPower;
-      player.grounded = false;
-      player.canDoubleJump = true;
-    } else if (player.canDoubleJump) {
-      player.vy = player.jumpPower;
-      player.canDoubleJump = false;
-    }
-  });
-}
-
-// 화면 크기에 따라 캔버스 크기 조정
-function resizeCanvas() {
-  if (isMobileDevice()) {
-    const container = document.body;
-    const containerWidth = container.clientWidth;
-    const containerHeight = window.innerHeight;
-    
-    // 캔버스 고정 비율 유지 (500x800)
-    let canvasWidth = Math.min(containerWidth, containerWidth * 0.9);
-    let canvasHeight = canvasWidth * (800/500);
-    
-    if (canvasHeight > containerHeight * 0.8) {
-      canvasHeight = containerHeight * 0.8;
-      canvasWidth = canvasHeight * (500/800);
-    }
-    
-    // CSS 설정 (실제 게임 로직의 캔버스 크기는 그대로 유지)
-    canvas.style.width = canvasWidth + 'px';
-    canvas.style.height = canvasHeight + 'px';
-  } else {
-    canvas.style.width = '';
-    canvas.style.height = '';
-  }
-}
-
-// 화면 회전/크기 조정 시 캔버스 크기 재조정
-window.addEventListener('resize', resizeCanvas);
-
-// 초기화
-initMobileControls();
-resizeCanvas();
 
 function restart() {
   // 모든 스테이지에서 시작 발판 위에 플레이어 위치 (함정과 겹치지 않는 안전한 곳)
@@ -1012,11 +793,6 @@ function update() {
       player.vy = 0;
       player.grounded = true;
       player.canDoubleJump = false;
-      
-      // 사라지는 발판 트리거 추가 - 모든 스테이지에 적용
-      if (p.vanish && vanishStates[i] && !vanishStates[i].vanished) {
-        vanishStates[i].triggered = true;
-      }
     }
   }
 
@@ -1031,26 +807,13 @@ function update() {
   }
 
   for (let p of platforms) {
-    // 열쇠문이 아닌 일반 문 또는 열쇠를 가진 상태에서 열쇠문에 닿으면 다음 스테이지로 이동
     if (p.isDoor &&
       player.x < p.x + p.width &&
       player.x + player.width > p.x &&
       player.y < p.y + p.height &&
       player.y + player.height > p.y
     ) {
-      // 열쇠문이고 열쇠가 없으면 막음
-      if (p.isKeyDoor && !hasKey) {
-        // 문에 막힘
-        if (player.x + player.width / 2 < p.x + p.width / 2) {
-          player.x = p.x - player.width;
-        } else {
-          player.x = p.x + p.width;
-        }
-      } else {
-        // 일반 문이거나 열쇠가 있는 상태의 열쇠문
-        nextStage();
-        return; // 충돌 처리 후 즉시 리턴하여 나머지 로직 실행 안 함
-      }
+      nextStage();
     }
   }
 
@@ -1085,13 +848,24 @@ function update() {
   updateMissiles();
   updateVanishPlatforms();
 
-  // 사라지는 발판 처리 - 특정 스테이지가 아닌 모든 스테이지에 적용
-  platforms.forEach((p, idx) => {
-    // 이미 사라진 발판은 트리거도 무시
-    if (p.vanish && vanishStates[idx] && !vanishStates[idx].vanished) {
-      // 플레이어가 밟으면 타이머 시작 - update 함수 위에서 처리하므로 여기서는 불필요
-    }
-  });
+  // 사라지는 발판 처리
+  if (currentStage === 10) { // 11스테이지(0-based)
+    platforms.forEach((p, idx) => {
+      // 이미 사라진 발판은 트리거도 무시
+      if (p.vanish && vanishStates[idx] && !vanishStates[idx].vanished) {
+        // 플레이어가 밟으면 타이머 시작
+        if (
+          player.x + player.width > p.x &&
+          player.x < p.x + p.width &&
+          player.y + player.height > p.y - 2 &&
+          player.y + player.height < p.y + p.height + 5 &&
+          player.vy >= 0
+        ) {
+          vanishStates[idx].triggered = true;
+        }
+      }
+    });
+  }
 
   // 13스테이지: 열쇠 획득/문 열기/벽 막힘
   if (currentStage === 12) {
@@ -1105,17 +879,8 @@ function update() {
       player.y + player.height > key.y &&
       player.y < key.y + key.height
     ) {
-      hasKey = true;  // 여기서 열쇠 획득 상태 설정
-      keyMessageTimer = KEY_MESSAGE_DURATION; // 메시지 타이머 시작
-      // 즉시 게임 설명 패널 업데이트
-      drawInfo();
+      hasKey = true;
     }
-    
-    // 키 메시지 타이머 업데이트
-    if (keyMessageTimer > 0) {
-      keyMessageTimer--;
-    }
-
     // 벽 충돌(막힘)
     for (let p of platforms) {
       if (p.isWall &&
@@ -1129,8 +894,25 @@ function update() {
         else player.x = p.x + p.width;
       }
     }
-    
-    // 열쇠문은 열쇠 없으면 통과 불가 - 위에서 일반 문/열쇠문 통합해서 처리했으므로 삭제
+    // 열쇠문(문)은 열쇠 없으면 통과 불가
+    for (let p of platforms) {
+      if (p.isDoor && p.isKeyDoor) {
+        if (
+          player.x < p.x + p.width &&
+          player.x + player.width > p.x &&
+          player.y < p.y + p.height &&
+          player.y + player.height > p.y
+        ) {
+          if (hasKey) {
+            nextStage();
+          } else {
+            // 문에 막힘
+            if (player.x + player.width / 2 < p.x + p.width / 2) player.x = p.x - player.width;
+            else player.x = p.x + p.width;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -1159,7 +941,6 @@ function drawInfo() {
   `;
 }
 
-// 열쇠 그리기(13스테이지) - 열쇠를 얻은 후에도 표시
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1198,38 +979,20 @@ function draw() {
     }
   });
 
-  // 열쇠 그리기(13스테이지) - 열쇠 상태를 표시
-  if (currentStage === 12) {
+  // 열쇠 그리기(13스테이지)
+  if (currentStage === 12 && platforms.key && !hasKey) {
     const key = platforms.key;
     ctx.save();
     ctx.fillStyle = 'gold';
     ctx.strokeStyle = '#b88d00';
     ctx.lineWidth = 2;
-    
-    // 열쇠 획득 메시지만 표시하고, 코너에 열쇠 아이콘은 표시하지 않음
-    if (hasKey) {
-      // 열쇠 획득 메시지 표시
-      if (keyMessageTimer > 0) {
-        ctx.font = 'bold 22px Arial';
-        ctx.fillStyle = 'white';
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 3;
-        const message = '열쇠 획득! 열쇠문으로 가세요!';
-        const msgWidth = ctx.measureText(message).width;
-        ctx.strokeText(message, canvas.width/2 - msgWidth/2, 60);
-        ctx.fillText(message, canvas.width/2 - msgWidth/2, 60);
-      }
-    } 
-    // 아직 획득하지 않은 열쇠는 원래 위치에 표시
-    else if (key) {
-      ctx.beginPath();
-      ctx.arc(key.x + key.width / 2, key.y + key.height / 2, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.font = 'bold 18px Arial';
-      ctx.fillStyle = '#b88d00';
-      ctx.fillText('🔑', key.x + 2, key.y + 18);
-    }
+    ctx.beginPath();
+    ctx.arc(key.x + key.width / 2, key.y + key.height / 2, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = 'bold 18px Arial';
+    ctx.fillStyle = '#b88d00';
+    ctx.fillText('🔑', key.x + 2, key.y + 18);
     ctx.restore();
   }
 
@@ -1337,23 +1100,6 @@ document.getElementById('skipStageBtn').onclick = function() {
     nextStage();
   }
 };
-
-// 게임 설명 토글 버튼 기능 추가
-document.getElementById('info-toggle').addEventListener('click', function() {
-  const infoPanel = document.getElementById('info');
-  if (infoPanel.classList.contains('visible')) {
-    infoPanel.classList.remove('visible');
-    this.textContent = '게임 설명 보기';
-  } else {
-    infoPanel.classList.add('visible');
-    this.textContent = '게임 설명 닫기';
-  }
-});
-
-// 초기 모바일 상태 설정
-if (isMobileDevice()) {
-  document.getElementById('info').classList.remove('visible');
-}
 
 function loop() {
   update();
