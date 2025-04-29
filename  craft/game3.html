@@ -38,14 +38,22 @@
   <script>
     // === 변수 선언 및 초기화 영역 (최상단에 위치) ===
     let commandHP = 1000;
-    let worm = null;
+    let worms = [];
     let wormSpawnTimer = 60 * 60; // 1분(60fps)
     const WORM_HP = 30;
     const WORM_ATK = 3;
 
+    // === 총기생산공장 관련 변수 및 상수 ===
+    let gunFactories = [];
+    let buildGunFactoryMode = false;
+    let gunFactoryBuildQueue = [];
+    const GUN_FACTORY_BUILD_COST = 250;
+    const GUN_FACTORY_BUILD_DURATION = 900; // 15초(60*15)
+
     // 경찰 능력치
     const POLICE_HP = 50;
     const POLICE_ATK = 8;
+    const POLICE_ATTACK_INTERVAL = 54; // 0.9초(60*0.9)
 
     const canvas = document.getElementById('game-canvas');
     const ctx = canvas.getContext('2d');
@@ -212,7 +220,7 @@
     const POLICE_BUILD_COST = 50;
     const POLICE_BUILD_DURATION = 300; // 5초(60*5)
 
-    function drawPolice(x, y, selected, hp) {
+    function drawPolice(x, y, selected, hp, isAttacking, attackProgress) {
       ctx.save();
       ctx.translate(x, y);
       if (selected) {
@@ -224,9 +232,14 @@
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      // 경찰봉 그리기 (오른손에)
+      // 경찰봉 휘두르기(공격 시 애니메이션)
       ctx.save();
-      ctx.rotate(-Math.PI/6); // 약간 오른쪽 아래로
+      let swing = 0;
+      if (isAttacking && typeof attackProgress === 'number') {
+        // 공격 진행도에 따라 -45~+45도
+        swing = Math.sin(attackProgress * Math.PI) * Math.PI/4;
+      }
+      ctx.rotate(-Math.PI/6 + swing);
       ctx.beginPath();
       ctx.moveTo(10, 0);
       ctx.lineTo(32, 0);
@@ -275,7 +288,7 @@
       ctx.fillText('경찰 생산 (50 미네랄)', x, y - 30);
       if (queue > 0) {
         ctx.font = '14px sans-serif';
-        ctx.fillText(`생산 대기: ${Math.ceil(queue / 60)}초`, x, y);
+      ctx.fillText(`생산 대기: ${Math.ceil(queue / 60)}초`, x, y);
       }
       ctx.restore();
     }
@@ -284,10 +297,10 @@
       ctx.save();
       ctx.globalAlpha = 0.95;
       ctx.fillStyle = '#222';
-      ctx.fillRect(250, 150, 300, 180);
+      ctx.fillRect(250, 150, 300, 220);
       ctx.strokeStyle = '#0ff';
       ctx.lineWidth = 3;
-      ctx.strokeRect(250, 150, 300, 180);
+      ctx.strokeRect(250, 150, 300, 220);
       ctx.globalAlpha = 1;
       ctx.font = 'bold 26px sans-serif';
       ctx.fillStyle = '#fff';
@@ -295,7 +308,36 @@
       ctx.fillText('건설할 건물 선택', 400, 190);
       ctx.font = '20px sans-serif';
       ctx.fillText('훈련소 (150 미네랄)', 400, 250);
+      ctx.fillText('총기생산공장 (250 미네랄)', 400, 300);
       ctx.restore();
+    }
+
+    function drawGunFactory(x, y, constructing, progress) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = constructing ? '#bbb' : '#222';
+      ctx.fillRect(-30, -30, 60, 60);
+      ctx.strokeStyle = '#ff0';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-30, -30, 60, 60);
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillStyle = '#ff0';
+      ctx.textAlign = 'center';
+      ctx.fillText('총공장', 0, 6);
+      if (constructing) {
+        ctx.fillStyle = '#0ff';
+        ctx.fillRect(-30, 28, 60 * progress, 6);
+        ctx.strokeStyle = '#222';
+        ctx.strokeRect(-30, 28, 60, 6);
+        ctx.font = '12px sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('건설중', 0, 24);
+      }
+      ctx.restore();
+    }
+
+    function addGunFactory(x, y) {
+      gunFactories.push({ x, y });
     }
 
     function moveSCV(scv) {
@@ -418,6 +460,9 @@
       ctx.restore();
     }
 
+    // 지렁이 점액 애니메이션 상태
+    let wormSpit = null;
+
     function drawWorm(w) {
       ctx.save();
       ctx.translate(w.x, w.y);
@@ -432,6 +477,17 @@
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'center';
       ctx.fillText('지렁이', 0, 6);
+      // 점액(공격 애니메이션)
+      if (w.spit && w.spit.active && w.spit.timer > 0) {
+        ctx.save();
+        ctx.rotate(w.spit.angle);
+        ctx.beginPath();
+        ctx.arc(38, 0, 10, 0, Math.PI * 2);
+        ctx.fillStyle = 'lime';
+        ctx.globalAlpha = Math.max(0, 1 - w.spit.timer / 15);
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.restore();
     }
 
@@ -440,10 +496,14 @@
       drawCommandCenter(command.x, command.y);
       for (const m of minerals) drawMineral(m.x, m.y);
       for (const b of barracks) drawBarracks(b.x, b.y);
-      // 훈련소 건설 대기열 표시
       for (const b of barracksBuildQueue) {
         drawBarracks(b.x, b.y, true, 1 - b.timer / BARRACKS_BUILD_DURATION);
       }
+      // 총기공장 건설 대기열 표시
+      for (const gf of gunFactoryBuildQueue) {
+        drawGunFactory(gf.x, gf.y, true, 1 - gf.timer / GUN_FACTORY_BUILD_DURATION);
+      }
+      for (const gf of gunFactories) drawGunFactory(gf.x, gf.y);
       for (let i = 0; i < scvs.length; i++) {
         drawSCV(scvs[i], scvSelected.includes(i));
       }
@@ -521,58 +581,40 @@
           barracksBuildQueue.splice(i, 1);
         }
       }
-      // 경찰 유닛 그리기 및 이동 처리
-      for (let i = 0; i < police.length; i++) {
-        drawPolice(police[i].x, police[i].y, policeSelected.includes(i), police[i].hp);
-        if (police[i].state === 'move') movePolice(police[i]);
+      // 총기생산공장 건설 진행
+      for (let i = gunFactoryBuildQueue.length - 1; i >= 0; i--) {
+        gunFactoryBuildQueue[i].timer--;
+        if (gunFactoryBuildQueue[i].timer <= 0) {
+          addGunFactory(gunFactoryBuildQueue[i].x, gunFactoryBuildQueue[i].y);
+          gunFactoryBuildQueue.splice(i, 1);
+        }
       }
-      // 훈련소 경찰 생산 처리
-      for (const b of barracks) {
-        if (b.policeQueue && b.policeQueue.length > 0 && b.policeTimer > 0) {
-          b.policeTimer--;
-          if (b.policeTimer <= 0) {
-            // 경찰 유닛 생성 (훈련소 근처에, 겹치지 않게)
-            let angle = 0;
-            let found = false;
-            let spawnX, spawnY;
-            for (let t = 0; t < 36; t++) {
-              angle = (t * 10) * Math.PI / 180;
-              spawnX = b.x + 40 * Math.cos(angle);
-              spawnY = b.y + 40 * Math.sin(angle);
-              let overlap = false;
-              for (const p of police) {
-                if (Math.abs(p.x - spawnX) < 36 && Math.abs(p.y - spawnY) < 36) {
-                  overlap = true;
-                  break;
-                }
-              }
-              if (!overlap) {
-                found = true;
-                break;
-              }
-            }
-            if (!found) {
-              spawnX = b.x + 40;
-              spawnY = b.y;
-            }
-            police.push({
-              x: spawnX,
-              y: spawnY,
-              tx: b.x,
-              ty: b.y,
-              state: 'idle',
-              hp: POLICE_HP,
-              atk: POLICE_ATK,
-              attackTimer: 0
-            });
-            b.policeQueue.shift();
-            // 다음 대기열이 있으면 타이머 재설정
-            if (b.policeQueue.length > 0) {
-              b.policeTimer = b.policeQueue[0];
-            } else {
-              b.policeTimer = 0;
-            }
+      // 경찰 유닛 그리기 및 이동 처리
+      for (let i = police.length - 1; i >= 0; i--) {
+        // 공격 중이면 경찰봉 휘두르기
+        let isAttacking = false;
+        let attackProgress = 0;
+        let foundTarget = false;
+        for (let wi = 0; wi < worms.length; wi++) {
+          let worm = worms[wi];
+          let pdx = worm.x - police[i].x;
+          let pdy = worm.y - police[i].y;
+          let pdist = Math.sqrt(pdx*pdx + pdy*pdy);
+          if (!foundTarget && pdist < 60 && worm.hp > 0 && police[i].hp > 0) {
+            isAttacking = true;
+            // 공격 진행도: 0~1 (POLICE_ATTACK_INTERVAL 프레임 기준)
+            attackProgress = (police[i].attackTimer || 0) / POLICE_ATTACK_INTERVAL;
+            if (attackProgress > 1) attackProgress = 1;
+            police[i].attackTarget = wi;
+            foundTarget = true;
           }
+        }
+        drawPolice(police[i].x, police[i].y, policeSelected.includes(i), police[i].hp, isAttacking, attackProgress);
+        if (police[i].state === 'move') movePolice(police[i]);
+        // 체력이 0 이하가 되면 배열에서 제거
+        if (police[i].hp <= 0) {
+          police.splice(i, 1);
+          continue;
         }
       }
       try {
@@ -587,6 +629,7 @@
         }
       } catch (e) {
         showMessage('UI 렌더링 오류: ' + e.message);
+        console.error('UI 렌더링 오류:', e); // 콘솔에 전체 에러 출력
         // UI 상태 초기화로 루프 멈춤 방지
         barracksUIOpen = false;
         commandUIOpen = false;
@@ -606,46 +649,91 @@
         drawBarracks(mousePos.x, mousePos.y);
         ctx.restore();
       }
+      // 총기생산공장 짓기 모드일 때 마우스 위치에 미리보기
+      if (buildGunFactoryMode && barracksBuildSCV !== null) {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        drawGunFactory(mousePos.x, mousePos.y);
+        ctx.restore();
+      }
       if (chatOpen) {
         drawChatUI();
       }
       // 적 지렁이 스폰 및 이동/공격 처리
       if (wormSpawnTimer > 0) {
         wormSpawnTimer--;
-        if (wormSpawnTimer === 0 && !worm) {
-          // 지렁이 스폰 (화면 오른쪽 랜덤 y)
-          worm = {
-            x: 1200 + 40,
-            y: 200 + Math.random() * 500,
-            hp: WORM_HP,
-            state: 'move'
-          };
+        if (wormSpawnTimer === 0 && worms.length === 0) {
+          // 3마리 지렁이 스폰 (화면 오른쪽 랜덤 y)
+          for (let i = 0; i < 3; i++) {
+            worms.push({
+              x: 1200 + 40,
+              y: 200 + Math.random() * 500,
+              hp: WORM_HP,
+              state: 'move',
+              spit: null,
+              attackTimer: 0,
+              policeAttackTimer: 0
+            });
+          }
         }
       }
-      if (worm) {
+      // 여러 지렁이 처리
+      for (let wi = worms.length - 1; wi >= 0; wi--) {
+        let worm = worms[wi];
         drawWorm(worm);
-        // 커맨드 센터로 이동
         let dx = command.x - worm.x;
         let dy = command.y - worm.y;
         let dist = Math.sqrt(dx*dx + dy*dy);
+        let wormAttackAngle = Math.atan2(dy, dx);
         if (dist > 60) {
           worm.x += dx/dist * 1.5;
           worm.y += dy/dist * 1.5;
         } else {
-          // 공격
-          if (!worm.attackTimer) worm.attackTimer = 0;
           worm.attackTimer++;
-          if (worm.attackTimer >= 30) { // 0.5초마다 공격
+          if (worm.attackTimer >= 30) {
             commandHP -= WORM_ATK;
             if (commandHP < 0) commandHP = 0;
             worm.attackTimer = 0;
+            worm.spit = { active: true, timer: 15, angle: wormAttackAngle };
           }
         }
-        // 죽으면 제거
-        if (worm.hp <= 0) {
-          worm = null;
-          wormSpawnTimer = 60 * 60; // 1분 후 재스폰
+        if (worm.spit && worm.spit.active) {
+          worm.spit.timer--;
+          if (worm.spit.timer <= 0) worm.spit.active = false;
         }
+        for (let i = 0; i < police.length; i++) {
+          let p = police[i];
+          let pdx = worm.x - p.x;
+          let pdy = worm.y - p.y;
+          let pdist = Math.sqrt(pdx*pdx + pdy*pdy);
+          // 단일 공격: 자신의 attackTarget만 공격
+          if (pdist < 60 && worm.hp > 0 && p.hp > 0 && p.attackTarget === wi) {
+            p.attackTimer = (p.attackTimer || 0) + 1;
+            if (p.attackTimer >= POLICE_ATTACK_INTERVAL) {
+              worm.hp -= p.atk;
+              p.attackTimer = 0;
+            }
+            worm.policeAttackTimer++;
+            if (worm.policeAttackTimer >= 30) {
+              p.hp -= WORM_ATK;
+              if (p.hp < 0) p.hp = 0;
+              worm.policeAttackTimer = 0;
+              worm.spit = { active: true, timer: 15, angle: Math.atan2(p.y-worm.y, p.x-worm.x) };
+            }
+          } else if (p.attackTarget === wi) {
+            // 타겟이 멀어지거나 죽으면 공격 중지
+            p.attackTarget = undefined;
+            p.attackTimer = 0;
+          }
+        }
+        // 죽으면 배열에서 제거
+        if (worm.hp <= 0) {
+          worms.splice(wi, 1);
+        }
+      }
+      // 모든 지렁이가 죽으면 1분 후 재스폰
+      if (worms.length === 0 && wormSpawnTimer <= 0) {
+        wormSpawnTimer = 60 * 60;
       }
       requestAnimationFrame(gameLoop);
     }
@@ -703,10 +791,8 @@
       const my = e.offsetY;
       // 훈련소 UI가 열려 있으면 버튼/밖 클릭 처리
       if (barracksUIOpen && barracksUIIdx !== null && barracks[barracksUIIdx]) {
-        const bx = barracks[barracksUIIdx].x;
-        const by = barracks[barracksUIIdx].y;
         // 경찰 생산 버튼 클릭
-        if (mx > bx - 60 && mx < bx + 60 && my > by - 60 && my < by - 10) {
+        if (mx > barracks[barracksUIIdx].x - 60 && mx < barracks[barracksUIIdx].x + 60 && my > barracks[barracksUIIdx].y - 60 && my < barracks[barracksUIIdx].y - 10) {
           let b = barracks[barracksUIIdx];
           if (mineralCount >= POLICE_BUILD_COST) {
             mineralCount -= POLICE_BUILD_COST;
@@ -721,7 +807,7 @@
           return;
         }
         // UI 밖 클릭 시 닫기
-        if (!(mx > bx - 60 && mx < bx + 60 && my > by - 90 && my < by + 20)) {
+        if (!(mx > barracks[barracksUIIdx].x - 60 && mx < barracks[barracksUIIdx].x + 60 && my > barracks[barracksUIIdx].y - 90 && my < barracks[barracksUIIdx].y + 20)) {
           barracksUIOpen = false;
           barracksUIIdx = null;
           return;
@@ -739,24 +825,39 @@
           scvActionUIOpen = false;
           buildMenuUIOpen = false;
           buildBarracksMode = false;
+          buildGunFactoryMode = false;
           return;
         }
       }
-      // 훈련소 건설 모드
-      if (buildBarracksMode && barracksBuildSCV !== null) {
-        // 미네랄 체크
-        if (mineralCount < BARRACKS_BUILD_COST) {
-          showMessage('미네랄이 부족합니다! (훈련소: 150)');
+      // 훈련소/총기공장 건설 모드
+      if ((buildBarracksMode || buildGunFactoryMode) && barracksBuildSCV !== null) {
+        if (buildBarracksMode) {
+          if (mineralCount < BARRACKS_BUILD_COST) {
+            showMessage('미네랄이 부족합니다! (훈련소: 150)');
+            buildBarracksMode = false;
+            barracksBuildSCV = null;
+            return;
+          }
+          mineralCount -= BARRACKS_BUILD_COST;
+          mineralCountEl.textContent = mineralCount;
+          barracksBuildQueue.push({x: mx, y: my, timer: BARRACKS_BUILD_DURATION});
           buildBarracksMode = false;
           barracksBuildSCV = null;
           return;
+        } else if (buildGunFactoryMode) {
+          if (mineralCount < GUN_FACTORY_BUILD_COST) {
+            showMessage('미네랄이 부족합니다! (총기생산공장: 250)');
+            buildGunFactoryMode = false;
+            barracksBuildSCV = null;
+            return;
+          }
+          mineralCount -= GUN_FACTORY_BUILD_COST;
+          mineralCountEl.textContent = mineralCount;
+          gunFactoryBuildQueue.push({x: mx, y: my, timer: GUN_FACTORY_BUILD_DURATION});
+          buildGunFactoryMode = false;
+          barracksBuildSCV = null;
+          return;
         }
-        mineralCount -= BARRACKS_BUILD_COST;
-        mineralCountEl.textContent = mineralCount;
-        barracksBuildQueue.push({x: mx, y: my, timer: BARRACKS_BUILD_DURATION});
-        buildBarracksMode = false;
-        barracksBuildSCV = null;
-        return;
       }
       // SCV 액션 UI
       if (scvActionUIOpen) {
@@ -771,17 +872,20 @@
           scvActionUIOpen = false;
           return;
         }
-      } else if (buildMenuUIOpen) {
-        // '훈련소' 선택 영역
-        if (mx > 250 && mx < 550 && my > 230 && my < 270) {
-          buildMenuUIOpen = false;
+      }
+      // 건설 메뉴 UI
+      if (buildMenuUIOpen) {
+        if (mx > 250 && mx < 550 && my > 150 && my < 370) {
+          // 훈련소 건설 모드
           buildBarracksMode = true;
-          // barracksBuildSCV는 마지막 선택된 SCV로 유지
+          buildGunFactoryMode = false;
+          barracksBuildSCV = null;
           return;
-        }
-        // UI 밖 클릭 시 닫기
-        if (!(mx > 250 && mx < 550 && my > 150 && my < 330)) {
-          buildMenuUIOpen = false;
+        } else if (mx > 550 && mx < 850 && my > 150 && my < 370) {
+          // 총기생산공장 건설 모드
+          buildGunFactoryMode = true;
+          buildBarracksMode = false;
+          barracksBuildSCV = null;
           return;
         }
       }
@@ -793,16 +897,16 @@
         );
         if (hitCommand) {
           commandUIOpen = true;
+          barracksUIOpen = false;
+          scvActionUIOpen = false;
+          buildMenuUIOpen = false;
+          buildBarracksMode = false;
+          buildGunFactoryMode = false;
           return;
         }
       } else {
-        // 커맨드 UI가 열려있을 때 SCV 생산 버튼 영역 클릭
-        if (mx > 250 && mx < 550 && my > 270 && my < 320) {
-          trySpawnSCV();
-          return;
-        }
         // UI 밖 클릭 시 닫기
-        if (!(mx > 250 && mx < 550 && my > 150 && my < 350)) {
+        if (!(mx > command.x - 48 && mx < command.x + 48 && my > command.y - 48 && my < command.y + 48)) {
           commandUIOpen = false;
           return;
         }
@@ -818,13 +922,14 @@
           // 더블 클릭 감지
           const now = Date.now();
           if (lastSCVClickIdx === i && now - lastSCVClickTime < 400) {
-            // 두 번 연속 클릭 시 UI 오픈
             scvActionUIOpen = true;
             barracksUIOpen = false;
             commandUIOpen = false;
             buildMenuUIOpen = false;
             buildBarracksMode = false;
+            buildGunFactoryMode = false;
             barracksBuildSCV = i;
+            return;
           } else {
             scvSelected = [i];
             lastSCVClickIdx = i;
@@ -835,17 +940,6 @@
         }
       }
       if (found) return;
-      // 경찰 단일 선택
-      let foundPolice = false;
-      for (let i = 0; i < police.length; i++) {
-        let p = police[i];
-        if (e.offsetX > p.x - 18 && e.offsetX < p.x + 18 && e.offsetY > p.y - 18 && e.offsetY < p.y + 18) {
-          policeSelected = [i];
-          foundPolice = true;
-          break;
-        }
-      }
-      if (foundPolice) return;
       // 여러 미네랄 중 클릭된 미네랄 찾기
       let mineralIdx = minerals.findIndex(m =>
         mx > m.x - 40 && mx < m.x + 40 &&
@@ -867,14 +961,33 @@
       e.preventDefault();
       const mx = e.offsetX;
       const my = e.offsetY;
-      // 경찰 이동 명령
-      if (policeSelected.length > 0) {
-        for (const idx of policeSelected) {
-          let p = police[idx];
-          p.state = 'move';
-          p.tx = mx;
-          p.ty = my;
+      // 건설 모드에서 우클릭으로 건설
+      if (buildBarracksMode && barracksBuildSCV !== null) {
+        if (mineralCount < BARRACKS_BUILD_COST) {
+          showMessage('미네랄이 부족합니다! (훈련소: 150)');
+          buildBarracksMode = false;
+          barracksBuildSCV = null;
+          return;
         }
+        mineralCount -= BARRACKS_BUILD_COST;
+        mineralCountEl.textContent = mineralCount;
+        barracksBuildQueue.push({x: mx, y: my, timer: BARRACKS_BUILD_DURATION});
+        buildBarracksMode = false;
+        barracksBuildSCV = null;
+        return;
+      }
+      if (buildGunFactoryMode && barracksBuildSCV !== null) {
+        if (mineralCount < GUN_FACTORY_BUILD_COST) {
+          showMessage('미네랄이 부족합니다! (총기생산공장: 250)');
+          buildGunFactoryMode = false;
+          barracksBuildSCV = null;
+          return;
+        }
+        mineralCount -= GUN_FACTORY_BUILD_COST;
+        mineralCountEl.textContent = mineralCount;
+        gunFactoryBuildQueue.push({x: mx, y: my, timer: GUN_FACTORY_BUILD_DURATION});
+        buildGunFactoryMode = false;
+        barracksBuildSCV = null;
         return;
       }
       // 여러 미네랄 중 우클릭된 미네랄 찾기
