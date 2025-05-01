@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>숲에서 시작하는 점프 게임</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #7ec850;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: linear-gradient(to top, #4e944f 60%, #a3de83 100%);
+    }
+    #inventory {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      background: rgba(255,255,255,0.8);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: sans-serif;
+      font-size: 18px;
+      z-index: 10;
+      display: none;
+      min-width: 120px;
+    }
+    #inventory.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="inventory"></div>
+  <canvas id="gameCanvas" width="600" height="400"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const inventoryDiv = document.getElementById('inventory');
+
+    // 맵 상태: 'forest', 'forest2', 'forest3', 'village', 'caveEntrance', 'cave'
+    let currentMap = 'forest';
+
+    // 나무 데이터
+    const trees = [];
+    for (let i = 0; i < 6; i++) {
+      trees.push({
+        x: 60 + i * 90,
+        y: 270,
+        width: 20,
+        height: 80,
+        radius: 35,
+        chopped: false,
+        chopCount: 0
+      });
+    }
+
+    // 숲2 데이터 (작은 연못)
+    const pond = { x: 320, y: 340, w: 120, h: 30 };
+
+    // 숲3 데이터 (큰 바위와 꽃)
+    const bigRock = { x: 400, y: 320, r: 35 };
+    const flowers = [
+      { x: 120, y: 355, color: "#ff69b4" },
+      { x: 180, y: 360, color: "#ffd700" },
+      { x: 220, y: 358, color: "#87ceeb" },
+      { x: 300, y: 362, color: "#ff69b4" }
+    ];
+
+    // 동굴 입구 위치 및 돌맹이 데이터
+    const caveEntrance = { x: 400, y: 220, width: 120, height: 130 };
+    const stones = [
+      { x: 420, y: 340, r: 13 },
+      { x: 470, y: 355, r: 10 },
+      { x: 510, y: 345, r: 8 },
+      { x: 560, y: 350, r: 12 },
+      { x: 440, y: 360, r: 7 }
+    ];
+
+    // 동굴 내부 돌맹이 데이터
+    const caveStones = [
+      { x: 80, y: 340, r: 10 },
+      { x: 150, y: 355, r: 8 },
+      { x: 200, y: 345, r: 12 },
+      { x: 260, y: 350, r: 9 },
+      { x: 320, y: 360, r: 7 },
+      { x: 380, y: 355, r: 11 },
+      { x: 440, y: 340, r: 10 },
+      { x: 500, y: 350, r: 13 },
+      { x: 560, y: 355, r: 8 }
+    ];
+
+    // 철광석 데이터 (동굴 지역)
+    const irons = [
+      { x: 120, y: 320, r: 16, mined: false },
+      { x: 250, y: 340, r: 13, mined: false },
+      { x: 400, y: 330, r: 18, mined: false }
+    ];
+
+    // 무너진 마을 데이터
+    const ruins = [
+      { x: 120, y: 320, w: 60, h: 40 },
+      { x: 250, y: 300, w: 80, h: 60 },
+      { x: 400, y: 310, w: 70, h: 50 }
+    ];
+    // 추가: 쓰러진 기둥, 잔해, 불타는 잔불, 잡초, 나무 그루터기, 바닥 금
+    const fallenPillars = [
+      { x: 180, y: 360, w: 40, h: 10, angle: -0.2 },
+      { x: 350, y: 370, w: 50, h: 12, angle: 0.3 }
+    ];
+    const debris = [
+      { x: 160, y: 355, r: 7 },
+      { x: 290, y: 345, r: 10 },
+      { x: 470, y: 360, r: 8 }
+    ];
+    const fires = [
+      { x: 210, y: 350 },
+      { x: 430, y: 355 }
+    ];
+    const stumps = [
+      { x: 520, y: 360, r: 12 },
+      { x: 80, y: 362, r: 10 }
+    ];
+    const cracks = [
+      { x1: 140, y1: 370, x2: 170, y2: 390 },
+      { x1: 300, y1: 370, x2: 320, y2: 390 },
+      { x1: 500, y1: 370, x2: 540, y2: 390 }
+    ];
+
+    // 플레이어
+    const player = {
+      x: 100,
+      y: 300,
+      width: 30,
+      height: 30,
+      color: "#ffcc00",
+      vy: 0,
+      jumpPower: -12,
+      gravity: 0.6,
+      onGround: false,
+      speed: 3,
+      hp: 100,
+      maxHp: 100,
+      attack: 0 // 검 장착 시 3.5
+    };
+
+    let hasSword = false;
+    let gameOver = false; // 게임오버 상태 변수
+
+    // 쥐 몬스터 데이터
+    const rats = [];
+    function spawnRat() {
+      rats.push({
+        x: 100 + Math.random() * 400,
+        y: 320,
+        w: 28,
+        h: 18,
+        hp: 15,
+        maxHp: 15,
+        attack: 5,
+        alive: true,
+        dir: Math.random() < 0.5 ? 1 : -1,
+        hitTimer: 0
+      });
+    }
+    // 처음 마을 진입 시 1마리
+    let villageEntered = false;
+    let ratSpawnTimer = 0;
+
+    function drawForest() {
+      // 땅
+      ctx.fillStyle = "#3e683a";
+      ctx.fillRect(0, 350, 600, 50);
+      // 나무 여러 그리기
+      for (const tree of trees) {
+        if (tree.chopped) continue;
+        // 나무 줄기
+        ctx.fillStyle = "#8d5524";
+        ctx.fillRect(tree.x, tree.y, tree.width, tree.height);
+        // 나무 잎
+        ctx.beginPath();
+        ctx.arc(tree.x + tree.width/2, tree.y, tree.radius, Math.PI, 2 * Math.PI);
+        ctx.fillStyle = "#2e8b57";
+        ctx.fill();
+      }
+    }
+
+    function drawForest2() {
+      // 땅
+      ctx.fillStyle = "#3e683a";
+      ctx.fillRect(0, 350, 600, 50);
+      // 연못
+      ctx.save();
+      ctx.fillStyle = "#4fc3f7";
+      ctx.beginPath();
+      ctx.ellipse(pond.x + pond.w/2, pond.y + pond.h/2, pond.w/2, pond.h/2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // 나무 (적게)
+      for (let i = 0; i < 3; i++) {
+        let x = 80 + i * 180;
+        ctx.fillStyle = "#8d5524";
+        ctx.fillRect(x, 270, 20, 80);
+        ctx.beginPath();
+        ctx.arc(x + 10, 270, 35, Math.PI, 2 * Math.PI);
+        ctx.fillStyle = "#388e3c";
+        ctx.fill();
+      }
+      // 연못 텍스트
+      ctx.save();
+      ctx.font = "bold 20px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.fillText("작은 연못", pond.x + 10, pond.y - 10);
+      ctx.restore();
+    }
+
+    function drawForest3() {
+      // 땅
+      ctx.fillStyle = "#3e683a";
+      ctx.fillRect(0, 350, 600, 50);
+      // 큰 바위
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(bigRock.x, bigRock.y, bigRock.r, 0, Math.PI * 2);
+      ctx.fillStyle = "#888";
+      ctx.fill();
+      ctx.restore();
+      // 꽃
+      for (const f of flowers) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = f.color;
+        ctx.fill();
+        ctx.restore();
+      }
+      // 나무 (1개)
+      ctx.fillStyle = "#8d5524";
+      ctx.fillRect(520, 270, 20, 80);
+      ctx.beginPath();
+      ctx.arc(530, 270, 35, Math.PI, 2 * Math.PI);
+      ctx.fillStyle = "#2e8b57";
+      ctx.fill();
+      // 바위 텍스트
+      ctx.save();
+      ctx.font = "bold 20px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.fillText("큰 바위와 꽃", bigRock.x - 40, bigRock.y - 50);
+      ctx.restore();
+    }
+
+    function drawVillage() {
+      // 땅
+      ctx.fillStyle = "#b2a27a";
+      ctx.fillRect(0, 350, 600, 50);
+
+      // 폐허 건물
+      for (const ruin of ruins) {
+        ctx.save();
+        ctx.fillStyle = "#888";
+        ctx.fillRect(ruin.x, ruin.y, ruin.w, ruin.h);
+        ctx.strokeStyle = "#555";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(ruin.x, ruin.y, ruin.w, ruin.h);
+        ctx.restore();
+      }
+
+      // 쓰러진 기둥
+      for (const p of fallenPillars) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.angle);
+        ctx.fillStyle = "#7a5c3e";
+        ctx.fillRect(0, 0, p.w, p.h);
+        ctx.restore();
+      }
+
+      // 잔해(돌)
+      for (const d of debris) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        ctx.fillStyle = "#aaa";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 불타는 잔불
+      for (const f of fires) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, 10, 0, Math.PI, true);
+        ctx.fillStyle = "#222";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(f.x - 5, f.y);
+        ctx.lineTo(f.x, f.y - 15);
+        ctx.lineTo(f.x + 5, f.y);
+        ctx.closePath();
+        ctx.fillStyle = "#ff9800";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 나무 그루터기
+      for (const s of stumps) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = "#8d5524";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r - 4, 0, Math.PI * 2);
+        ctx.fillStyle = "#c69c6d";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 바닥 금
+      for (const c of cracks) {
+        ctx.save();
+        ctx.strokeStyle = "#6d4c2c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(c.x1, c.y1);
+        ctx.lineTo(c.x2, c.y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 잡초
+      for (let i = 0; i < 10; i++) {
+        ctx.save();
+        ctx.strokeStyle = "#4e944f";
+        ctx.beginPath();
+        let gx = 50 + i * 50 + Math.random() * 10;
+        ctx.moveTo(gx, 350);
+        ctx.lineTo(gx + Math.random() * 10 - 5, 340 + Math.random() * 10);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 쥐 그리기
+      for (const rat of rats) {
+        if (!rat.alive) continue;
+        ctx.save();
+        ctx.fillStyle = "#888";
+        ctx.beginPath();
+        ctx.ellipse(rat.x + rat.w/2, rat.y + rat.h/2, rat.w/2, rat.h/2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // 귀
+        ctx.beginPath();
+        ctx.arc(rat.x + 7, rat.y + 5, 5, 0, Math.PI * 2);
+        ctx.arc(rat.x + rat.w - 7, rat.y + 5, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#aaa";
+        ctx.fill();
+        // 눈
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(rat.x + 8, rat.y + 10, 2, 0, Math.PI * 2);
+        ctx.arc(rat.x + rat.w - 8, rat.y + 10, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // 체력바
+        ctx.fillStyle = "#f00";
+        ctx.fillRect(rat.x, rat.y - 8, rat.w * (rat.hp / rat.maxHp), 4);
+        ctx.strokeStyle = "#222";
+        ctx.strokeRect(rat.x, rat.y - 8, rat.w, 4);
+        ctx.restore();
+      }
+
+      // 마을 텍스트
+      ctx.save();
+      ctx.font = "bold 28px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "#222";
+      ctx.lineWidth = 3;
+      ctx.strokeText("무너진 마을", 220, 80);
+      ctx.fillText("무너진 마을", 220, 80);
+      ctx.restore();
+    }
+
+    function drawCaveMap() {
+      // 땅
+      ctx.fillStyle = "#5a4d3a";
+      ctx.fillRect(0, 350, 600, 50);
+
+      // 동굴 입구
+      ctx.save();
+      ctx.fillStyle = "#444";
+      ctx.beginPath();
+      ctx.ellipse(caveEntrance.x + caveEntrance.width/2, caveEntrance.y + caveEntrance.height/2, caveEntrance.width/2, caveEntrance.height/2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // 돌맹이 그리기
+      for (const stone of stones) {
+        if (stone.r === 0) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(stone.x, stone.y, stone.r, 0, Math.PI * 2);
+        ctx.fillStyle = "#bbb";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 동굴 입구 텍스트
+      ctx.save();
+      ctx.font = "bold 28px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "#222";
+      ctx.lineWidth = 3;
+      ctx.strokeText("동굴 입구", caveEntrance.x + 10, caveEntrance.y - 20);
+      ctx.fillText("동굴 입구", caveEntrance.x + 10, caveEntrance.y - 20);
+      ctx.restore();
+    }
+
+    function drawCaveInside() {
+      // 동굴 내부 배경
+      ctx.fillStyle = "#222";
+      ctx.fillRect(0, 0, 600, 400);
+      // 바닥
+      ctx.fillStyle = "#444";
+      ctx.fillRect(0, 350, 600, 50);
+
+      // 동굴 내부 돌맹이 그리기
+      for (const stone of caveStones) {
+        if (stone.r === 0) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(stone.x, stone.y, stone.r, 0, Math.PI * 2);
+        ctx.fillStyle = "#bbb";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 철광석 그리기
+      for (const iron of irons) {
+        if (iron.mined) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(iron.x, iron.y, iron.r, 0, Math.PI * 2);
+        ctx.fillStyle = "#b0b8c9";
+        ctx.fill();
+        ctx.strokeStyle = "#888";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 동굴 내부 텍스트
+      ctx.save();
+      ctx.font = "bold 28px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = 3;
+      ctx.strokeText("동굴", 260, 60);
+      ctx.fillText("동굴", 260, 60);
+      ctx.restore();
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
+
+    function drawGameOver() {
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = "#222";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.font = "bold 40px sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.fillText("게임 오버", canvas.width/2, canvas.height/2 - 20);
+      ctx.font = "24px sans-serif";
+      ctx.fillText("R 키를 눌러 다시 시작", canvas.width/2, canvas.height/2 + 30);
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
+
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    function updatePlayer() {
+      if (gameOver) return; // 게임오버 시 플레이어 업데이트 중단
+      player.vy += player.gravity;
+      player.y += player.vy;
+
+      // 바닥 충돌
+      if (player.y + player.height >= 350) {
+        player.y = 350 - player.height;
+        player.vy = 0;
+        player.onGround = true;
+      } else {
+        player.onGround = false;
+      }
+
+      // 맵별 이동 제한 및 맵 전환
+      if (currentMap === 'forest') {
+        if (keys['ArrowLeft']) {
+          if (player.x > 0) {
+            player.x -= player.speed;
+          } else {
+            // 왼쪽 끝에서 두번째 숲으로
+            currentMap = 'forest2';
+            player.x = canvas.width - player.width;
+            player.y = 300;
+          }
+        }
+        if (keys['ArrowRight']) {
+          if (player.x + player.width < canvas.width) {
+            player.x += player.speed;
+          } else {
+            // 오른쪽 끝에서 동굴 입구로
+            currentMap = 'caveEntrance';
+            player.x = 0;
+            player.y = 300;
+          }
+        }
+      } else if (currentMap === 'forest2') {
+        if (keys['ArrowLeft']) {
+          if (player.x > 0) {
+            player.x -= player.speed;
+          } else {
+            // 왼쪽 끝에서 세번째 숲으로
+            currentMap = 'forest3';
+            player.x = canvas.width - player.width;
+            player.y = 300;
+          }
+        }
+        if (keys['ArrowRight']) {
+          if (player.x + player.width < canvas.width) {
+            player.x += player.speed;
+          } else {
+            // 오른쪽 끝에서 첫번째 숲으로
+            currentMap = 'forest';
+            player.x = 0;
+            player.y = 300;
+          }
+        }
+      } else if (currentMap === 'forest3') {
+        if (keys['ArrowLeft']) {
+          if (player.x > 0) {
+            player.x -= player.speed;
+          } else {
+            // 왼쪽 끝에서 무너진 마을로
+            currentMap = 'village';
+            player.x = canvas.width - player.width;
+            player.y = 300;
+          }
+        }
+        if (keys['ArrowRight']) {
+          if (player.x + player.width < canvas.width) {
+            player.x += player.speed;
+          } else {
+            // 오른쪽 끝에서 두번째 숲으로
+            currentMap = 'forest2';
+            player.x = 0;
+            player.y = 300;
+          }
+        }
+      } else if (currentMap === 'village') {
+        if (keys['ArrowRight']) {
+          if (player.x + player.width < canvas.width) {
+            player.x += player.speed;
+          } else {
+            // 오른쪽 끝에서 세번째 숲으로
+            currentMap = 'forest3';
+            player.x = 0;
+            player.y = 300;
+          }
+        }
+        if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
+      } else if (currentMap === 'caveEntrance') {
+        // 동굴 입구에서 동굴 내부로 진입
+        // 동굴 입구 타원과 플레이어 충돌 체크
+        const px = player.x + player.width / 2;
+        const py = player.y + player.height / 2;
+        const cx = caveEntrance.x + caveEntrance.width / 2;
+        const cy = caveEntrance.y + caveEntrance.height / 2;
+        const rx = caveEntrance.width / 2;
+        const ry = caveEntrance.height / 2;
+        // 타원 내부 판정
+        const inCave = ((px - cx) ** 2) / (rx ** 2) + ((py - cy) ** 2) / (ry ** 2) < 1;
+        if (inCave) {
+          currentMap = 'cave';
+          player.x = 40;
+          player.y = 300;
+          return;
+        }
+        if (keys['ArrowLeft']) {
+          if (player.x > 0) {
+            player.x -= player.speed;
+          } else {
+            // 왼쪽 끝에서 다시 숲으로
+            currentMap = 'forest';
+            player.x = canvas.width - player.width;
+            player.y = 300;
+          }
+        }
+        if (keys['ArrowRight'] && player.x + player.width < canvas.width) player.x += player.speed;
+      } else if (currentMap === 'cave') {
+        if (keys['ArrowLeft']) {
+          if (player.x > 0) {
+            player.x -= player.speed;
+          } else {
+            // 동굴에서 왼쪽 끝으로 나가면 동굴 입구로 (왼쪽에서 등장)
+            currentMap = 'caveEntrance';
+            player.x = 0;
+            player.y = 300;
+          }
+        }
+        if (keys['ArrowRight'] && player.x + player.width < canvas.width) player.x += player.speed;
+      }
+      if (keys['ArrowUp'] && player.y > 0) player.y -= player.speed;
+      if (keys['ArrowDown'] && player.y + player.height < 350) player.y += player.speed;
+
+      if (player.hp <= 0) {
+        player.hp = 0;
+        gameOver = true;
+        showInventory(true);
+        document.getElementById('craft-msg').textContent = "💀 게임 오버! R 키로 재시작";
+        return;
+      }
+    }
+
+    // 마을 쥐 AI 및 충돌 처리 (플레이어를 공격함)
+    function updateVillageRats() {
+      if (gameOver) return; // 게임오버 시 쥐 업데이트 중단
+      let damaged = false;
+      let damageAmount = 0;
+      for (const rat of rats) {
+        if (!rat.alive) continue;
+        // 간단한 좌우 이동
+        rat.x += rat.dir * 1.2;
+        if (rat.x < 40) { rat.x = 40; rat.dir = 1; }
+        if (rat.x > 530) { rat.x = 530; rat.dir = -1; }
+        // 플레이어와 충돌 시 공격
+        if (
+          player.x + player.width > rat.x &&
+          player.x < rat.x + rat.w &&
+          player.y + player.height > rat.y &&
+          player.y < rat.y + rat.h
+        ) {
+          if (rat.hitTimer <= 0) {
+            player.hp -= rat.attack;
+            damageAmount += rat.attack;
+            damaged = true;
+            rat.hitTimer = 60; // 1초 쿨타임 (60프레임)
+            if (player.hp < 0) player.hp = 0;
+          }
+        }
+        if (rat.hitTimer > 0) rat.hitTimer--;
+      }
+      // 인벤토리 갱신(채력 반영)
+      if (damaged) updateInventory();
+    }
+
+    // 점프 이벤트
+    window.addEventListener('keydown', function(e) {
+      if ((e.code === 'Space' || e.code === 'ArrowUp') && player.onGround) {
+        player.vy = player.jumpPower;
+      }
+    });
+
+    // 플레이어 공격(스페이스바) 처리
+    window.addEventListener('keydown', function(e) {
+      if (e.code === 'Space') {
+        if (currentMap === 'village') {
+          for (const rat of rats) {
+            if (!rat.alive) continue;
+            // 공격 범위: 플레이어 앞 40픽셀
+            let attackRange = player.x + player.width + 40;
+            if (
+              rat.x < attackRange &&
+              rat.x + rat.w > player.x &&
+              Math.abs(player.y - rat.y) < 40
+            ) {
+              let dmg = hasSword ? 3.5 : 0;
+              if (dmg > 0) {
+                rat.hp -= dmg;
+                if (rat.hp <= 0) {
+                  rat.alive = false;
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // 플레이어 공격(키: E) 처리
+    window.addEventListener('keydown', function(e) {
+      if (e.code === 'KeyE') {
+        if (currentMap === 'village') {
+          for (const rat of rats) {
+            if (!rat.alive) continue;
+            // 공격 범위: 플레이어 앞 40픽셀
+            let attackRange = player.x + player.width + 40;
+            if (
+              rat.x < attackRange &&
+              rat.x + rat.w > player.x &&
+              Math.abs(player.y - rat.y) < 40
+            ) {
+              let dmg = hasSword ? 3.5 : 0;
+              if (dmg > 0) {
+                rat.hp -= dmg;
+                if (rat.hp <= 0) {
+                  rat.alive = false;
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // R 키로 게임 재시작
+    window.addEventListener('keydown', function(e) {
+      if (gameOver && (e.code === 'KeyR' || e.code === 'Keyr')) {
+        // 상태 초기화
+        currentMap = 'forest';
+        player.x = 100;
+        player.y = 300;
+        player.hp = player.maxHp;
+        player.vy = 0;
+        woodCount = 0;
+        stoneCount = 0;
+        ironCount = 0;
+        hasAxe = false;
+        hasPickaxe = false;
+        hasSword = false;
+        player.attack = 0;
+        // 나무, 돌, 철광석, 쥐, 기타 리셋
+        for (const tree of trees) {
+          tree.chopped = false;
+          tree.chopCount = 0;
+        }
+        for (const stone of stones) {
+          stone.r = Math.max(stone.r, 7); // 원래 반지름 복구
+        }
+        for (const stone of caveStones) {
+          stone.r = Math.max(stone.r, 7);
+        }
+        for (const iron of irons) {
+          iron.mined = false;
+        }
+        rats.length = 0;
+        villageEntered = false;
+        gameOver = false;
+        showInventory(false);
+        updateInventory();
+      }
+    });
+
+    // 인벤토리
+    let woodCount = 0;
+    let stoneCount = 0;
+    let ironCount = 0;
+    let inventoryVisible = false;
+    let hasAxe = false;
+    let hasPickaxe = false;
+
+    function updateInventory() {
+      inventoryDiv.innerHTML = `
+        <div style="margin-bottom:8px;">
+          <b>인벤토리</b>
+        </div>
+        <div>🌲 나무: ${woodCount}</div>
+        <div>🪨 돌: ${stoneCount}</div>
+        <div>⛏️ 철광석: ${ironCount}</div>
+        <div>🪓 도끼: ${hasAxe ? "보유" : "없음"}</div>
+        <div>⛏️ 곡괭이: ${hasPickaxe ? "보유" : "없음"}</div>
+        <div>🗡️ 검: ${hasSword ? "보유(공격력 3.5)" : "없음"}</div>
+        <div>❤️ 체력: ${player.hp} / ${player.maxHp}</div>
+        <hr>
+        <div><b>제작</b></div>
+        <div>
+          <button id="craft-axe" style="margin-top:4px;" ${hasAxe ? "disabled" : ""}>도끼 제작 (나무 3, 돌 2)</button>
+        </div>
+        <div>
+          <button id="craft-pickaxe" style="margin-top:4px;" ${hasPickaxe ? "disabled" : ""}>곡괭이 제작 (나무 10, 돌 3)</button>
+        </div>
+        <div>
+          <button id="craft-sword" style="margin-top:4px;" ${hasSword ? "disabled" : ""}>검 제작 (나무 4, 돌 8)</button>
+        </div>
+        <div id="craft-msg" style="color:#b00; min-height:20px; font-size:15px;"></div>
+      `;
+      // 도끼 제작 버튼
+      const axeBtn = document.getElementById('craft-axe');
+      if (axeBtn) {
+        axeBtn.onclick = function() {
+          if (hasAxe) return;
+          if (woodCount >= 3 && stoneCount >= 2) {
+            woodCount -= 3;
+            stoneCount -= 2;
+            hasAxe = true;
+            document.getElementById('craft-msg').textContent = "도끼를 제작했습니다!";
+            updateInventory();
+          } else {
+            document.getElementById('craft-msg').textContent = "재료가 부족합니다.";
+          }
+        };
+      }
+      // 곡괭이 제작 버튼
+      const pickaxeBtn = document.getElementById('craft-pickaxe');
+      if (pickaxeBtn) {
+        pickaxeBtn.onclick = function() {
+          if (hasPickaxe) return;
+          if (woodCount >= 10 && stoneCount >= 3) {
+            woodCount -= 10;
+            stoneCount -= 3;
+            hasPickaxe = true;
+            document.getElementById('craft-msg').textContent = "곡괭이를 제작했습니다!";
+            updateInventory();
+          } else {
+            document.getElementById('craft-msg').textContent = "재료가 부족합니다.";
+          }
+        };
+      }
+      // 검 제작 버튼
+      const swordBtn = document.getElementById('craft-sword');
+      if (swordBtn) {
+        swordBtn.onclick = function() {
+          if (hasSword) return;
+          if (woodCount >= 4 && stoneCount >= 8) {
+            woodCount -= 4;
+            stoneCount -= 8;
+            hasSword = true;
+            player.attack = 3.5;
+            document.getElementById('craft-msg').textContent = "검을 제작했습니다!";
+            updateInventory();
+          } else {
+            document.getElementById('craft-msg').textContent = "재료가 부족합니다.";
+          }
+        };
+      }
+    }
+
+    function showInventory(show) {
+      inventoryVisible = show;
+      if (show) {
+        inventoryDiv.classList.add('show');
+        updateInventory();
+      } else {
+        inventoryDiv.classList.remove('show');
+      }
+    }
+
+    // 나무/돌/철광석 클릭 처리
+    canvas.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return; // 좌클릭만
+      if (currentMap === 'forest') {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        for (const tree of trees) {
+          if (tree.chopped) continue;
+          // 나무 줄기와 잎 영역 체크
+          const inTrunk = mx >= tree.x && mx <= tree.x + tree.width && my >= tree.y && my <= tree.y + tree.height;
+          const dx = mx - (tree.x + tree.width/2);
+          const dy = my - tree.y;
+          const inLeaf = dy <= 0 && dx*dx + dy*dy <= tree.radius*tree.radius;
+          if (inTrunk || inLeaf) {
+            // 도끼가 있으면 3번, 없으면 10번
+            tree.chopCount += hasAxe ? 3 : 1;
+            // 간단한 효과: 나무 흔들림(색상 변경)
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(tree.x, tree.y, tree.width, tree.height);
+            ctx.restore();
+            if ((hasAxe && tree.chopCount >= 3) || (!hasAxe && tree.chopCount >= 10)) {
+              tree.chopped = true;
+              woodCount += 5;
+              updateInventory();
+            }
+            break;
+          }
+        }
+      } else if (currentMap === 'caveEntrance') {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        for (const stone of stones) {
+          if (stone.r === 0) continue; // 이미 사라진 돌은 무시
+          const dx = mx - stone.x;
+          const dy = my - stone.y;
+          if (dx*dx + dy*dy <= stone.r*stone.r) {
+            stoneCount += 1;
+            stone.r = 0; // 돌맹이 사라지게 반지름 0으로
+            updateInventory();
+            break;
+          }
+        }
+      } else if (currentMap === 'cave') {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        // 동굴 내부 돌맹이 클릭 처리
+        for (const stone of caveStones) {
+          if (stone.r === 0) continue;
+          const dx = mx - stone.x;
+          const dy = my - stone.y;
+          if (dx*dx + dy*dy <= stone.r*stone.r) {
+            stoneCount += 1;
+            stone.r = 0;
+            updateInventory();
+            return;
+          }
+        }
+        // 철광석 클릭 처리 (곡괭이 필요)
+        for (const iron of irons) {
+          if (iron.mined) continue;
+          const dx = mx - iron.x;
+          const dy = my - iron.y;
+          if (dx*dx + dy*dy <= iron.r*iron.r) {
+            if (!hasPickaxe) {
+              showInventory(true);
+              document.getElementById('craft-msg').textContent = "⛏️ 곡괭이가 필요합니다!";
+              return;
+            }
+            iron.mined = true;
+            ironCount += 1;
+            updateInventory();
+            break;
+          }
+        }
+      }
+    });
+
+    // Tab 키로 인벤토리 토글
+    window.addEventListener('keydown', function(e) {
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        showInventory(!inventoryVisible);
+      }
+    });
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (gameOver) {
+        drawGameOver();
+        requestAnimationFrame(gameLoop);
+        return;
+      }
+      if (currentMap === 'forest') {
+        drawForest();
+      } else if (currentMap === 'forest2') {
+        drawForest2();
+      } else if (currentMap === 'forest3') {
+        drawForest3();
+      } else if (currentMap === 'village') {
+        // 쥐 스폰 관리
+        if (!villageEntered) {
+          rats.length = 0;
+          spawnRat();
+          villageEntered = true;
+          ratSpawnTimer = Date.now();
+        }
+        // 4초마다 3마리 스폰
+        if (Date.now() - ratSpawnTimer > 4000) {
+          for (let i = 0; i < 3; i++) spawnRat();
+          ratSpawnTimer = Date.now();
+        }
+        updateVillageRats();
+        drawVillage();
+      } else if (currentMap === 'caveEntrance') {
+        drawCaveMap();
+      } else if (currentMap === 'cave') {
+        drawCaveInside();
+      }
+      updatePlayer();
+      drawPlayer();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 최초 인벤토리 숨김
+    showInventory(false);
+    gameLoop();
+  </script>
+</body>
+</html>
